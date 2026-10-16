@@ -251,6 +251,8 @@ async function main() {
 
     case "--help":
     case "-h":
+    case "-help":
+    case "help":
     default: {
       printHelp()
       break
@@ -282,6 +284,9 @@ Commands:
   rules check                         Audit and report all 6 mirrored rules with 3-word previews
   rules add <rule text>               Add a new numbered rule across all 6 mirrored files
   rules edit <number> <new rule text> Edit an existing numbered rule across all 6 mirrored files
+  skill list [/force]                 List workspace skills with names, descriptions, and paths
+  skill search <query> [/force]       Fuzzy search skills across workspace by keywords
+  skill sync [-w] [target]            Sync skills as global pointers or full workflows (-w)
   mcp, serve                          Start the stdio Model Context Protocol (MCP) server
   --help, -h                          Display help information
   --version, -v                       Display version number

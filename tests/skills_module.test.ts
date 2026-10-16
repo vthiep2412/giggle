@@ -227,7 +227,7 @@ no_auto_read: false
     const skillDir = path.join(skillsDir, "coderabbit")
     fs.mkdirSync(skillDir, { recursive: true })
 
-    const skillContent = `---\nname: coderabbit\ndescription: Triage review findings.\n---\n\n# CodeRabbit Guide\nPerform strict review triage.`
+    const skillContent = `---\nname: coderabbit\ndescription: Anti Slop: Rules for AI Coding Agents.\n---\n\n# CodeRabbit Guide\nPerform strict review triage.`
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillContent, "utf8")
 
     // Pre-create existing file to test overwrite
@@ -241,7 +241,8 @@ no_auto_read: false
 
     const updatedContent = fs.readFileSync(targetFile, "utf8")
     expect(updatedContent.includes("name: coderabbit")).toBe(true)
-    expect(updatedContent.includes("description: Triage review findings.")).toBe(true)
+    // Verify colon-containing description is safely double-quoted
+    expect(updatedContent.includes('description: "Anti Slop: Rules for AI Coding Agents."')).toBe(true)
     expect(updatedContent.includes("file:///")).toBe(true)
     expect(updatedContent.includes("Perform strict review triage.")).toBe(false)
 

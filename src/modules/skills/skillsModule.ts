@@ -339,6 +339,14 @@ function collectAllFilesRecursively(rootDir: string): string[] {
   return results
 }
 
+function sanitizeYamlDescriptionForWorkflow(desc: string): string {
+  if (!desc) return '""'
+  if (desc.includes(":") || desc.includes("#") || desc.includes('"') || desc.includes("'") || desc.includes("\n")) {
+    return JSON.stringify(desc)
+  }
+  return desc
+}
+
 export function syncSkills(
   workspaceRoot?: string,
   targetGlobalDir?: string,
@@ -365,10 +373,12 @@ export function syncSkills(
         ? ""
         : "> Warning: Ignore this skill unless explicitly requested by the user.\n\n"
 
+      const safeDesc = sanitizeYamlDescriptionForWorkflow(skill.description)
+
       const pointerContent = [
         "---",
         `name: ${skill.name}`,
-        `description: ${skill.description}`,
+        `description: ${safeDesc}`,
         "---",
         "",
         warningBlock + normalizedSourceUri,

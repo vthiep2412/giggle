@@ -335,8 +335,22 @@ export function syncSkills(
   if (workflow) {
     for (const skill of skills) {
       const destFile = path.join(targetDir, `${skill.name}.md`)
-      const content = fs.readFileSync(skill.filePath, "utf8")
-      fs.writeFileSync(destFile, content, "utf8")
+      const normalizedSourceUri = `file:///${skill.filePath.replace(/\\/g, "/")}`
+      const warningBlock = skill.autoRead
+        ? ""
+        : "> Warning: Ignore this skill unless explicitly requested by the user.\n\n"
+
+      const pointerContent = [
+        "---",
+        `name: ${skill.name}`,
+        `description: ${skill.description}`,
+        "---",
+        "",
+        warningBlock + normalizedSourceUri,
+        "",
+      ].filter((part) => part !== "").join("\n")
+
+      fs.writeFileSync(destFile, pointerContent, "utf8")
       syncedFiles.push(destFile)
     }
 

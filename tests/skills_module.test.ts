@@ -232,7 +232,10 @@ no_auto_read: false
     expect(res.syncedFiles[0]).toBe(targetFile)
 
     const updatedContent = fs.readFileSync(targetFile, "utf8")
-    expect(updatedContent).toBe(skillContent)
+    expect(updatedContent.includes("name: coderabbit")).toBe(true)
+    expect(updatedContent.includes("description: Triage review findings.")).toBe(true)
+    expect(updatedContent.includes("file:///")).toBe(true)
+    expect(updatedContent.includes("Perform strict review triage.")).toBe(false)
 
     // Test MCP tool execution with workflow flag
     const module = new SkillsModule()

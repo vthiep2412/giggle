@@ -223,9 +223,11 @@ async function main() {
           console.log(`    Path: ${m.filePath}`)
         }
       } else if (sub === "sync") {
-        const targetArg = args[2]
-        const res = syncSkills(rootDir, targetArg)
-        console.log(`Synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
+        const isWorkflow = args.includes("-w") || args.includes("--workflow")
+        const targetArg = args.slice(2).find((a) => !["-w", "--workflow"].includes(a))
+        const res = syncSkills(rootDir, targetArg, isWorkflow)
+        const fileTypeLabel = isWorkflow ? "workflow markdown files" : "pointer files"
+        console.log(`Synced ${res.syncedCount} skills (${res.syncedFiles.length} ${fileTypeLabel})`)
         console.log(`Target location: ${res.targetDir}`)
       } else {
         console.error(`Unknown skill subcommand: ${sub}. Available: list, search, sync`)

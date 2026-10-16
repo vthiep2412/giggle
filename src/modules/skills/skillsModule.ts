@@ -314,16 +314,38 @@ function collectAllFilesRecursively(rootDir: string): string[] {
   return results
 }
 
-export function syncSkills(workspaceRoot?: string, targetGlobalDir?: string): SkillSyncResult {
+export function syncSkills(
+  workspaceRoot?: string,
+  targetGlobalDir?: string,
+  workflow: boolean = false
+): SkillSyncResult {
   // Always include all skills during sync so manual ones are available with warnings
   const skills = listSkills(workspaceRoot, true)
-  const targetDir = targetGlobalDir || path.join(os.homedir(), ".gemini", "antigravity", "skills")
+  const defaultDir = workflow
+    ? path.join(os.homedir(), ".gemini", "config", "global_workflows")
+    : path.join(os.homedir(), ".gemini", "antigravity", "skills")
+  const targetDir = targetGlobalDir || defaultDir
 
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true })
   }
 
   const syncedFiles: string[] = []
+
+  if (workflow) {
+    for (const skill of skills) {
+      const destFile = path.join(targetDir, `${skill.name}.md`)
+      const content = fs.readFileSync(skill.filePath, "utf8")
+      fs.writeFileSync(destFile, content, "utf8")
+      syncedFiles.push(destFile)
+    }
+
+    return {
+      syncedCount: skills.length,
+      targetDir,
+      syncedFiles,
+    }
+  }
 
   for (const skill of skills) {
     const targetSkillDir = path.join(targetDir, skill.name)
@@ -423,9 +445,11 @@ export class SkillsModule implements GiggleModule {
               console.log(`    Path: ${m.filePath}`)
             }
           } else if (sub === "sync") {
-            const targetArg = args[1]
-            const res = syncSkills(rootDir, targetArg)
-            console.log(`Synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
+            const isWorkflow = args.includes("-w") || args.includes("--workflow")
+            const targetArg = args.slice(1).find((a) => !["-w", "--workflow"].includes(a))
+            const res = syncSkills(rootDir, targetArg, isWorkflow)
+            const fileTypeLabel = isWorkflow ? "workflow markdown files" : "pointer files"
+            console.log(`Synced ${res.syncedCount} skills (${res.syncedFiles.length} ${fileTypeLabel})`)
             console.log(`Target location: ${res.targetDir}`)
           } else {
             console.error(`Unknown skill subcommand: ${sub}. Available: list, search, sync`)
@@ -513,7 +537,7 @@ export class SkillsModule implements GiggleModule {
       },
       {
         name: "giggle_skill_sync",
-        description: "Sync workspace skills to the Antigravity global skills folder using path pointers",
+        description: "Sync workspace skills to global skills folder as pointers or to global_workflows as markdown files",
         parameters: {
           type: "object",
           properties: {
@@ -523,13 +547,20 @@ export class SkillsModule implements GiggleModule {
             },
             targetDir: {
               type: "string",
-              description: "Optional target directory for synced skill pointers",
+              description: "Optional target directory for synced files",
+            },
+            workflow: {
+              type: "boolean",
+              description: "Whether to sync as full workflow markdown files to global_workflows, defaults to false",
             },
           },
         },
         execute: async (args: Record<string, any>) => {
           const root = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          return syncSkills(root, args.targetDir)
+          const isWorkflow = Boolean(args.workflow)
+          const res = syncSkills(root, args.targetDir, isWorkflow)
+          const fileTypeLabel = isWorkflow ? "workflow markdown files" : "pointer files"
+          return `Synced ${res.syncedCount} skills (${res.syncedFiles.length} ${fileTypeLabel}) to ${res.targetDir}`
         },
       },
     ]

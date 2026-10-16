@@ -210,4 +210,43 @@ no_auto_read: false
     expect(result.includes("Path:")).toBe(true)
     expect(result.includes("Raw documentation body")).toBe(false)
   })
+
+  it("syncs skills as full workflow markdown files when workflow mode is enabled and overwrites existing files", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-wf-src-"))
+    const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-wf-target-"))
+
+    const skillsDir = path.join(tempDir, ".agents", "skills")
+    const skillDir = path.join(skillsDir, "coderabbit")
+    fs.mkdirSync(skillDir, { recursive: true })
+
+    const skillContent = `---\nname: coderabbit\ndescription: Triage review findings.\n---\n\n# CodeRabbit Guide\nPerform strict review triage.`
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillContent, "utf8")
+
+    // Pre-create existing file to test overwrite
+    const targetFile = path.join(targetDir, "coderabbit.md")
+    fs.writeFileSync(targetFile, "old outdated content", "utf8")
+
+    const res = syncSkills(tempDir, targetDir, true)
+    expect(res.syncedCount).toBe(1)
+    expect(res.syncedFiles.length).toBe(1)
+    expect(res.syncedFiles[0]).toBe(targetFile)
+
+    const updatedContent = fs.readFileSync(targetFile, "utf8")
+    expect(updatedContent).toBe(skillContent)
+
+    // Test MCP tool execution with workflow flag
+    const module = new SkillsModule()
+    module.initialize({ rootDir: tempDir } as any)
+    const mcpTools = module.getMcpTools()
+    const syncTool = mcpTools.find((t) => t.name === "giggle_skill_sync")!
+
+    expect(syncTool.parameters.properties.workflow).toBeDefined()
+    const mcpRes = await syncTool.execute({
+      workspaceRoot: tempDir,
+      targetDir,
+      workflow: true,
+    })
+    expect(typeof mcpRes).toBe("string")
+    expect(mcpRes.includes("workflow markdown files")).toBe(true)
+  })
 })

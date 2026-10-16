@@ -8,6 +8,7 @@ import { commitWorkspace } from "../src/core/staging"
 import { executeSync } from "../src/modules/sync/syncEngine"
 import { setRemoteUrl, getRemoteUrl } from "../src/core/remote"
 import { checkMirroredRules, addMirroredRule, editMirroredRule, findWorkspaceRoot } from "../src/modules/rules/rulesModule"
+import { listSkills, searchSkills, syncSkills } from "../src/modules/skills/skillsModule"
 import { runMcpServer } from "../src/mcp/server"
 import { resolveHead } from "../src/core/counter"
 
@@ -183,6 +184,48 @@ async function main() {
         console.log(`Updated all ${res.updatedFiles.length} mirrored rule files cleanly.`)
       } else {
         console.error(`Unknown rules subcommand: ${sub}. Available: check, add, edit`)
+        process.exit(1)
+      }
+      break
+    }
+
+    case "skill":
+    case "skills": {
+      const sub = args[1] || "list"
+      const rootDir = findGiggleRoot() || findWorkspaceRoot()
+
+      if (sub === "list") {
+        const skills = listSkills(rootDir)
+        console.log(`Discovered ${skills.length} skills in workspace:`)
+        for (const s of skills) {
+          const tag = s.autoRead ? "[OK]" : "[MANUAL]"
+          console.log(`  ${tag} ${s.name} (auto-read: ${s.autoRead ? "yes" : "no"})`)
+          if (s.description) {
+            console.log(`       ${s.description}`)
+          }
+          console.log(`       Path: ${s.filePath}`)
+        }
+      } else if (sub === "search") {
+        const query = args.slice(2).join(" ").trim()
+        if (!query) {
+          console.error("Usage: giggle skill search <query>")
+          process.exit(1)
+        }
+        const matches = searchSkills(query, rootDir)
+        console.log(`Found ${matches.length} matching skills for '${query}':`)
+        for (const m of matches) {
+          console.log(`  - ${m.name}: ${m.filePath}`)
+          if (m.description) {
+            console.log(`    ${m.description}`)
+          }
+        }
+      } else if (sub === "sync") {
+        const targetArg = args[2]
+        const res = syncSkills(rootDir, targetArg)
+        console.log(`Successfully synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
+        console.log(`Target location: ${res.targetDir}`)
+      } else {
+        console.error(`Unknown skill subcommand: ${sub}. Available: list, search, sync`)
         process.exit(1)
       }
       break

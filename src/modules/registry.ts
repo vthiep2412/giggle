@@ -1,5 +1,6 @@
 import type { GiggleModule, GiggleModuleContext, CliCommand, McpToolDefinition } from "./base"
 import { RulesModule } from "./rules/rulesModule"
+import { SkillsModule } from "./skills/skillsModule"
 
 export class ModuleRegistry {
   private modules: Map<string, GiggleModule> = new Map()
@@ -48,6 +49,7 @@ export class ModuleRegistry {
 export function createDefaultRegistry(context?: GiggleModuleContext): ModuleRegistry {
   const registry = new ModuleRegistry()
   registry.register(new RulesModule())
+  registry.register(new SkillsModule())
 
   if (context) {
     registry.initializeAll(context)

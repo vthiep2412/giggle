@@ -10,7 +10,6 @@ export interface SkillInfo {
   filePath: string
   skillDir: string
   autoRead: boolean
-  rawContent?: string
 }
 
 export interface SkillSyncResult {
@@ -45,7 +44,6 @@ export function parseSkillFrontmatter(content: string, filePath: string): SkillI
       filePath,
       skillDir,
       autoRead: true,
-      rawContent: cleanContent,
     }
   }
 
@@ -117,7 +115,6 @@ export function parseSkillFrontmatter(content: string, filePath: string): SkillI
     filePath,
     skillDir,
     autoRead,
-    rawContent: content,
   }
 }
 
@@ -463,7 +460,11 @@ export class SkillsModule implements GiggleModule {
           const skills = listSkills(root, force)
           return {
             total: skills.length,
-            skills,
+            skills: skills.map((s) => ({
+              name: s.name,
+              description: s.description,
+              path: s.filePath,
+            })),
           }
         },
       },
@@ -493,9 +494,12 @@ export class SkillsModule implements GiggleModule {
           const force = Boolean(args.force)
           const matches = searchSkills(args.query || "", root, force)
           return {
-            query: args.query,
             total: matches.length,
-            matches,
+            skills: matches.map((s) => ({
+              name: s.name,
+              description: s.description,
+              path: s.filePath,
+            })),
           }
         },
       },

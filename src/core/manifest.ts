@@ -49,17 +49,11 @@ export function normalizePath(p: string): string {
   return p.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "")
 }
 
-export function matchesPattern(relPath: string, pattern: string): boolean {
-  const normRel = normalizePath(relPath)
-  const normPat = normalizePath(pattern)
+const patternRegexCache = new Map<string, { fullRegex: RegExp; baseRegex?: RegExp }>()
 
-  if (normRel === normPat) {
-    return true
-  }
-
-  if (normRel.startsWith(`${normPat}/`)) {
-    return true
-  }
+export function getCompiledPattern(normPat: string): { fullRegex: RegExp; baseRegex?: RegExp } {
+  const cached = patternRegexCache.get(normPat)
+  if (cached) return cached
 
   let regexStr = "^"
   let i = 0
@@ -91,14 +85,37 @@ export function matchesPattern(relPath: string, pattern: string): boolean {
   }
   regexStr += "$"
 
+  const fullRegex = new RegExp(regexStr)
+  let baseRegex: RegExp | undefined
+  if (!normPat.includes("/")) {
+    baseRegex = fullRegex
+  }
+
+  const compiled = { fullRegex, baseRegex }
+  patternRegexCache.set(normPat, compiled)
+  return compiled
+}
+
+export function matchesPattern(relPath: string, pattern: string): boolean {
+  const normRel = normalizePath(relPath)
+  const normPat = normalizePath(pattern)
+
+  if (normRel === normPat) {
+    return true
+  }
+
+  if (normRel.startsWith(`${normPat}/`)) {
+    return true
+  }
+
   try {
-    const regex = new RegExp(regexStr)
-    if (regex.test(normRel)) {
+    const { fullRegex, baseRegex } = getCompiledPattern(normPat)
+    if (fullRegex.test(normRel)) {
       return true
     }
-    if (!normPat.includes("/")) {
+    if (baseRegex) {
       const base = path.posix.basename(normRel)
-      return regex.test(base)
+      return baseRegex.test(base)
     }
     return false
   } catch {

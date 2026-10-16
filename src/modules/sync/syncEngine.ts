@@ -3,8 +3,8 @@ import * as path from "node:path"
 import { loadManifestRules, collectManifestFiles } from "../../core/manifest"
 import { diffWorkingTree } from "../../core/workingtree"
 import { commitWorkspace } from "../../core/staging"
-import { resolveHead } from "../../core/counter"
-import { getRemoteUrl, fetchRemote, rebaseOntoRemote, pushRemote } from "../../core/remote"
+import { resolveHead, resolveRef } from "../../core/counter"
+import { getRemoteUrl, fetchRemote, rebaseOntoRemote, pushRemote, runGitCommand } from "../../core/remote"
 
 export interface SyncOptions {
   remoteName?: string
@@ -93,11 +93,17 @@ export function executeSync(
 
   // Rebase onto remote branch if remote tracking reference exists
   const remoteBranchRef = `${remoteName}/${activeBranch}`
-  const remoteRefPath = path.join(giggleDir, "refs", "remotes", remoteName, activeBranch)
+  const remoteRelRef = `refs/remotes/${remoteName}/${activeBranch}`
+  const hasRemoteRef = Boolean(resolveRef(giggleDir, remoteRelRef))
 
-  if (fs.existsSync(remoteRefPath)) {
+  if (hasRemoteRef) {
     const rebaseRes = rebaseOntoRemote(giggleDir, rootDir, remoteBranchRef)
     if (!rebaseRes.success) {
+      try {
+        runGitCommand(giggleDir, rootDir, ["rebase", "--abort"])
+      } catch {
+        // Ignore cleanup error if rebase was not active
+      }
       return {
         autoCommitted,
         commitMessage,

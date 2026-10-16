@@ -16,7 +16,7 @@ export interface RuleFileAudit {
   exists: boolean
   writable: boolean
   totalRules: number
-  rules: { number: number; summary: string }[]
+  rules: { number: number; summary: string; content?: string }[]
 }
 
 export interface RulesCheckResult {
@@ -68,7 +68,7 @@ export function getMirroredRulePaths(
 }
 
 export function parseRulesFromText(text: string): { preamble: string; rules: ParsedRule[] } {
-  const ruleRegex = /(?:^|\n)(\d+)\.\s+/g
+  const ruleRegex = /(?:^|\n)(?!\s)(\d+)\.\s+/g
   const matches: { number: number; index: number; matchLength: number }[] = []
 
   let m: RegExpExecArray | null
@@ -92,7 +92,15 @@ export function parseRulesFromText(text: string): { preamble: string; rules: Par
     const current = matches[i]
     if (!current) continue
     const nextMatch = matches[i + 1]
-    const nextIndex = nextMatch ? nextMatch.index : text.length
+    let nextIndex = text.length
+    if (nextMatch) {
+      nextIndex = nextMatch.index
+    } else {
+      const boundaryMatch = text.slice(current.index).search(/\n(?=<\/[A-Za-z]|##|---)/)
+      if (boundaryMatch !== -1) {
+        nextIndex = current.index + boundaryMatch
+      }
+    }
     const raw = text.slice(current.index, nextIndex)
     const content = raw.slice(current.matchLength).trim()
     rules.push({
@@ -124,14 +132,14 @@ export function checkMirroredRules(
 ): RulesCheckResult {
   const targetFiles = getMirroredRulePaths(workspaceRoot, includeGlobalGemini)
   const fileAudits: RuleFileAudit[] = []
-  let canonicalRules: { number: number; summary: string }[] = []
+  let canonicalRules: { number: number; summary: string; content?: string }[] = []
   const driftDetails: string[] = []
 
   for (const file of targetFiles) {
     const exists = fs.existsSync(file)
     let writable = false
     let totalRules = 0
-    const ruleSummaries: { number: number; summary: string }[] = []
+    const ruleSummaries: { number: number; summary: string; content?: string }[] = []
 
     if (exists) {
       try {
@@ -149,6 +157,7 @@ export function checkMirroredRules(
         ruleSummaries.push({
           number: r.number,
           summary: formatRuleSummary(r.content),
+          content: r.content.trim(),
         })
       }
 
@@ -175,7 +184,7 @@ export function checkMirroredRules(
       for (let i = 0; i < canonicalRules.length; i++) {
         const canonical = canonicalRules[i]
         const actual = audit.rules[i]
-        if (!canonical || !actual || canonical.summary !== actual.summary) {
+        if (!canonical || !actual || canonical.content !== actual.content) {
           synchronized = false
           driftDetails.push(`Rule content drift in ${audit.file} at rule ${canonical?.number}`)
           break

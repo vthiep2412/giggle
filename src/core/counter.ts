@@ -2,6 +2,30 @@ import { readLooseObject, parseCommitBuffer } from "./objects"
 import * as fs from "node:fs"
 import * as path from "node:path"
 
+export function resolveRef(giggleDir: string, refPath: string): string | null {
+  const refFile = path.join(giggleDir, refPath)
+  if (fs.existsSync(refFile)) {
+    return fs.readFileSync(refFile, "utf8").trim()
+  }
+
+  const packedRefsFile = path.join(giggleDir, "packed-refs")
+  if (fs.existsSync(packedRefsFile)) {
+    const lines = fs.readFileSync(packedRefsFile, "utf8").split(/\r?\n/)
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("^")) {
+        continue
+      }
+      const parts = trimmed.split(/\s+/)
+      if (parts.length >= 2 && parts[1] === refPath) {
+        return parts[0] || null
+      }
+    }
+  }
+
+  return null
+}
+
 export function resolveHead(giggleDir: string): { branch: string | null; commitOid: string | null } {
   const headFile = path.join(giggleDir, "HEAD")
   if (!fs.existsSync(headFile)) {
@@ -12,11 +36,7 @@ export function resolveHead(giggleDir: string): { branch: string | null; commitO
   if (headContent.startsWith("ref: ")) {
     const refPath = headContent.slice(5).trim()
     const branchName = refPath.replace(/^refs\/heads\//, "")
-    const refFile = path.join(giggleDir, refPath)
-    if (!fs.existsSync(refFile)) {
-      return { branch: branchName, commitOid: null }
-    }
-    const commitOid = fs.readFileSync(refFile, "utf8").trim()
+    const commitOid = resolveRef(giggleDir, refPath)
     return { branch: branchName, commitOid }
   }
 

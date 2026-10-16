@@ -9,6 +9,7 @@ import { diffWorkingTree } from "../core/workingtree"
 import { commitWorkspace } from "../core/staging"
 import { executeSync } from "../modules/sync/syncEngine"
 import { createDefaultRegistry } from "../modules/registry"
+import { resolveHead } from "../core/counter"
 
 export function createMcpServer(customRootDir?: string) {
   const rootDir = customRootDir || findGiggleRoot(process.cwd()) || process.cwd()
@@ -124,6 +125,7 @@ export function createMcpServer(customRootDir?: string) {
 
     if (name === "giggle_status") {
       assertRepoInitialized()
+      const head = resolveHead(giggleDir)
       const manifestFile = path.join(rootDir, ".gigglemanifest")
       const rules = loadManifestRules(manifestFile)
       const trackedFiles = collectManifestFiles(rootDir, rules)
@@ -134,6 +136,8 @@ export function createMcpServer(customRootDir?: string) {
             type: "text",
             text: JSON.stringify(
               {
+                branch: head.branch || "detached",
+                commitOid: head.commitOid,
                 trackedFilesCount: trackedFiles.length,
                 changes: diffs.filter((d) => d.status !== "unmodified"),
               },

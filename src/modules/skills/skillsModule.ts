@@ -33,10 +33,11 @@ const IGNORED_DIRECTORIES = new Set([
 ])
 
 export function parseSkillFrontmatter(content: string, filePath: string): SkillInfo {
+  const cleanContent = content.replace(/^\uFEFF/, "")
   const skillDir = path.dirname(filePath)
   const fallbackName = path.basename(skillDir)
 
-  const frontmatterMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+  const frontmatterMatch = cleanContent.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!frontmatterMatch || !frontmatterMatch[1]) {
     return {
       name: fallbackName,
@@ -44,7 +45,7 @@ export function parseSkillFrontmatter(content: string, filePath: string): SkillI
       filePath,
       skillDir,
       autoRead: true,
-      rawContent: content,
+      rawContent: cleanContent,
     }
   }
 
@@ -235,23 +236,37 @@ export function searchSkills(query: string, workspaceRoot?: string, force: boole
   return scored.map((item) => item.skill)
 }
 
-function collectAllFilesRecursively(dir: string, baseDir: string = dir): string[] {
+function collectAllFilesRecursively(rootDir: string): string[] {
   const results: string[] = []
-  if (!fs.existsSync(dir)) {
+  if (!fs.existsSync(rootDir)) {
     return results
   }
 
-  const entries = fs.readdirSync(dir, { withFileTypes: true })
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      if (IGNORED_DIRECTORIES.has(entry.name)) {
+  const stack: string[] = [rootDir]
+
+  while (stack.length > 0) {
+    const currentDir = stack.pop()
+    if (!currentDir) continue
+
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) {
         continue
       }
-      const fullPath = path.join(dir, entry.name)
-      results.push(...collectAllFilesRecursively(fullPath, baseDir))
-    } else if (entry.isFile()) {
-      const fullPath = path.join(dir, entry.name)
-      results.push(path.relative(baseDir, fullPath))
+      const fullPath = path.join(currentDir, entry.name)
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRECTORIES.has(entry.name)) {
+          stack.push(fullPath)
+        }
+      } else if (entry.isFile()) {
+        results.push(path.relative(rootDir, fullPath))
+      }
     }
   }
 

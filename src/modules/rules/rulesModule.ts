@@ -386,11 +386,69 @@ export class RulesModule implements GiggleModule {
               type: "string",
               description: "Optional root directory of the workspace, defaults to current repository root",
             },
+            ruleNumber: {
+              type: "number",
+              description: "Optional specific rule number to inspect full text for",
+            },
           },
         },
         execute: async (args: Record<string, any>) => {
           const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          return checkMirroredRules(targetRoot)
+          const check = checkMirroredRules(targetRoot)
+
+          if (args.ruleNumber !== undefined) {
+            const num = Number(args.ruleNumber)
+            const canonical = check.files[0]?.rules.find((r) => r.number === num)
+            if (!canonical) {
+              return `Rule ${num} not found. Total rules: ${check.totalRules}`
+            }
+
+            const mismatches: string[] = []
+            for (const f of check.files) {
+              if (!f.exists) {
+                mismatches.push(`${f.file}: file missing`)
+                continue
+              }
+              const fileRule = f.rules.find((r) => r.number === num)
+              if (!fileRule) {
+                mismatches.push(`${f.file}: rule missing`)
+              } else if (fileRule.content !== canonical.content) {
+                mismatches.push(`${f.file}: content mismatch`)
+              }
+            }
+
+            const isSynced = mismatches.length === 0
+            const header = `Rule ${num} (Synchronized across all ${check.files.length} files: ${isSynced})`
+
+            if (isSynced) {
+              return `${header}\n\n${canonical.content}`
+            }
+
+            const warningLines = mismatches.map((m) => `  ! ${m}`).join("\n")
+            return `${header}\n\nWarnings:\n${warningLines}\n\nCanonical Content:\n${canonical.content}`
+          }
+
+          const lines: string[] = [
+            `Audited ${check.files.length} mirrored rule files (Synchronized: ${check.synchronized}):`,
+          ]
+          for (const f of check.files) {
+            const statusMark = f.exists && f.writable ? "[OK]" : "[FAIL]"
+            lines.push(`  ${statusMark} ${f.file} (${f.totalRules} rules, writable: ${f.writable})`)
+          }
+
+          if (check.driftDetails && check.driftDetails.length > 0) {
+            lines.push("\nWarnings:")
+            for (const d of check.driftDetails) {
+              lines.push(`  ! ${d}`)
+            }
+          }
+
+          lines.push(`\nRules List (${check.totalRules} rules total):`)
+          for (const r of check.ruleSummaries) {
+            lines.push(`  Rule ${r.number}: ${r.summary}`)
+          }
+
+          return lines.join("\n")
         },
       },
       {
@@ -412,7 +470,11 @@ export class RulesModule implements GiggleModule {
         },
         execute: async (args: Record<string, any>) => {
           const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          return addMirroredRule(args.ruleText, targetRoot)
+          const res = addMirroredRule(args.ruleText, targetRoot)
+          return [
+            `Added Rule ${res.newRuleNumber}: ${res.summary}`,
+            `Updated ${res.updatedFiles.length} mirrored rule files.`,
+          ].join("\n")
         },
       },
       {
@@ -438,7 +500,13 @@ export class RulesModule implements GiggleModule {
         },
         execute: async (args: Record<string, any>) => {
           const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          return editMirroredRule(args.ruleNumber, args.newRuleText, targetRoot)
+          const res = editMirroredRule(args.ruleNumber, args.newRuleText, targetRoot)
+          return [
+            `Updated Rule ${res.ruleNumber}:`,
+            `  Previous: ${res.oldSummary}`,
+            `  Updated:  ${res.newSummary}`,
+            `Updated ${res.updatedFiles.length} mirrored rule files.`,
+          ].join("\n")
         },
       },
     ]

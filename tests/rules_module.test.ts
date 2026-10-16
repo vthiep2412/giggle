@@ -99,4 +99,66 @@ trigger: always_on
     expect(tools.some((t) => t.name === "giggle_rules_add")).toBe(true)
     expect(tools.some((t) => t.name === "giggle_rules_edit")).toBe(true)
   })
+
+  it("returns plain text audit and targeted rule sync verification in MCP tools", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-rules-mcp-"))
+    const agentRulesDir = path.join(tempDir, ".agents", "rules")
+    fs.mkdirSync(agentRulesDir, { recursive: true })
+
+    const rule1Text = "1. First rule statement for testing."
+    const rule2Text = "2. Second rule statement with details."
+    const initialContent = `${rule1Text}\n\n${rule2Text}\n`
+
+    const files = [
+      path.join(tempDir, "AGENTS.md"),
+      path.join(tempDir, "CLAUDE.md"),
+      path.join(tempDir, "CODEX.md"),
+      path.join(tempDir, "GEMINI.md"),
+      path.join(agentRulesDir, "rule.md"),
+    ]
+    for (const f of files) {
+      fs.writeFileSync(f, initialContent, "utf8")
+    }
+
+    const module = new RulesModule()
+    module.initialize({ rootDir: tempDir } as any)
+    const mcpTools = module.getMcpTools()
+    const checkTool = mcpTools.find((t) => t.name === "giggle_rules_check")!
+    const addTool = mcpTools.find((t) => t.name === "giggle_rules_add")!
+    const editTool = mcpTools.find((t) => t.name === "giggle_rules_edit")!
+
+    // Default audit: returns plain text summary
+    const defaultRes = await checkTool.execute({ workspaceRoot: tempDir })
+    expect(typeof defaultRes).toBe("string")
+    expect(defaultRes.includes("mirrored rule files")).toBe(true)
+    expect(defaultRes.includes("Rule 1:")).toBe(true)
+    expect(defaultRes.includes("Rule 2:")).toBe(true)
+
+    // Targeted rule check: returns sync state across all files and full content
+    const targetedRes = await checkTool.execute({ workspaceRoot: tempDir, ruleNumber: 1 })
+    expect(typeof targetedRes).toBe("string")
+    expect(targetedRes.includes("Rule 1 (Synchronized across all")).toBe(true)
+    expect(targetedRes.includes("First rule statement for testing.")).toBe(true)
+
+    // Add rule
+    const addRes = await addTool.execute({
+      workspaceRoot: tempDir,
+      ruleText: "Third rule added through MCP.",
+    })
+    expect(typeof addRes).toBe("string")
+    expect(addRes.includes("Added Rule 3:")).toBe(true)
+    expect(addRes.includes("Updated")).toBe(true)
+
+    // Edit rule
+    const editRes = await editTool.execute({
+      workspaceRoot: tempDir,
+      ruleNumber: 2,
+      newRuleText: "Updated second rule through MCP.",
+    })
+    expect(typeof editRes).toBe("string")
+    expect(editRes.includes("Updated Rule 2:")).toBe(true)
+    expect(editRes.includes("Updated")).toBe(true)
+
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  })
 })

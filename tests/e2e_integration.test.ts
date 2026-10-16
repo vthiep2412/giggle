@@ -56,7 +56,7 @@ describe("End-to-End Giggle Integration and Git Wire Verification", () => {
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
 
-  it("completes full Flow 1 sync against a local bare Git remote", () => {
+  it("completes full sync against a local bare Git remote", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-remote-work-"))
     const remoteBareDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-remote-bare-"))
 

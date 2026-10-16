@@ -39,7 +39,7 @@ export function createMcpServer(customRootDir?: string) {
     const builtinTools = [
       {
         name: "giggle_sync",
-        description: "Execute single-command Flow 1 sync (auto-commits uncommitted presets, rebases, and pushes to remote)",
+        description: "Auto-commit uncommitted presets, rebase, and push to remote",
         inputSchema: {
           type: "object",
           properties: {

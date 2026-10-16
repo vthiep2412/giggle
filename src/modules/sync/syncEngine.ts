@@ -88,7 +88,7 @@ export function executeSync(
     }
   }
 
-  // Flow 1: Fetch remote with explicit work tree
+  // Fetch remote with explicit work tree
   const fetchRes = fetchRemote(giggleDir, rootDir, remoteName, activeBranch)
 
   // Rebase onto remote branch if remote tracking reference exists
@@ -142,7 +142,7 @@ export function executeSync(
     branch: activeBranch,
     filesProcessed: trackedFiles,
     message: autoCommitted
-      ? `Successfully auto-committed "${commitMessage}" and synced with ${remoteName}/${activeBranch}.`
-      : `Working tree clean. Successfully synced with ${remoteName}/${activeBranch}.`,
+      ? `Auto-committed "${commitMessage}" and synced with ${remoteName}/${activeBranch}.`
+      : `Working tree clean. Synced with ${remoteName}/${activeBranch}.`,
   }
 }

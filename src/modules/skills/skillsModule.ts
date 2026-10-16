@@ -400,7 +400,7 @@ export class SkillsModule implements GiggleModule {
           if (sub === "list" || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f") {
             const force = args.includes("/force") || args.includes("/f") || args.includes("--force") || args.includes("-f") || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f"
             const skills = listSkills(rootDir, force)
-            console.log(`Discovered ${skills.length} skills in workspace:`)
+            console.log(`Found ${skills.length} skills in workspace:`)
             for (const s of skills) {
               console.log(`  ${s.name}`)
               if (s.description) {
@@ -428,7 +428,7 @@ export class SkillsModule implements GiggleModule {
           } else if (sub === "sync") {
             const targetArg = args[1]
             const res = syncSkills(rootDir, targetArg)
-            console.log(`Successfully synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
+            console.log(`Synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
             console.log(`Target location: ${res.targetDir}`)
           } else {
             console.error(`Unknown skill subcommand: ${sub}. Available: list, search, sync`)
@@ -501,7 +501,7 @@ export class SkillsModule implements GiggleModule {
       },
       {
         name: "giggle_skill_sync",
-        description: "Sync workspace skills to the Antigravity global skills folder with lightweight path pointers",
+        description: "Sync workspace skills to the Antigravity global skills folder using path pointers",
         parameters: {
           type: "object",
           properties: {

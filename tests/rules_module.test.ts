@@ -41,7 +41,7 @@ trigger: always_on
     expect(rules[1]!.content.includes("lines and explanations")).toBe(true)
   })
 
-  it("adds and edits rules across mirrored files cleanly", () => {
+  it("adds and edits rules across mirrored files successfully", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-rules-test-"))
     const agentRulesDir = path.join(tempDir, ".agents", "rules")
     fs.mkdirSync(agentRulesDir, { recursive: true })

@@ -275,7 +275,7 @@ export function editMirroredRule(
     }
   }
 
-  // Update all files atomically
+  // Update all files across target paths
   for (const file of targetFiles) {
     const content = fs.readFileSync(file, "utf8")
     const parsed = parseRulesFromText(content)
@@ -346,8 +346,8 @@ export class RulesModule implements GiggleModule {
 
           const rootDir = this.context?.rootDir || process.cwd()
           const res = addMirroredRule(text, rootDir)
-          console.log(`Successfully added Rule ${res.newRuleNumber}: ${res.summary}`)
-          console.log(`Updated all ${res.updatedFiles.length} mirrored files cleanly.`)
+          console.log(`Added Rule ${res.newRuleNumber}: ${res.summary}`)
+          console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
         },
       },
       {
@@ -365,10 +365,10 @@ export class RulesModule implements GiggleModule {
 
           const rootDir = this.context?.rootDir || process.cwd()
           const res = editMirroredRule(ruleNum, text, rootDir)
-          console.log(`Successfully updated Rule ${res.ruleNumber}:`)
+          console.log(`Updated Rule ${res.ruleNumber}:`)
           console.log(`  Previous: ${res.oldSummary}`)
           console.log(`  Updated:  ${res.newSummary}`)
-          console.log(`Updated all ${res.updatedFiles.length} mirrored files cleanly.`)
+          console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
         },
       },
     ]
@@ -395,13 +395,13 @@ export class RulesModule implements GiggleModule {
       },
       {
         name: "giggle_rules_add",
-        description: "Add a new numbered rule atomically across all 6 mirrored rule files without manual editing",
+        description: "Append a numbered rule across all 6 mirrored rule files",
         parameters: {
           type: "object",
           properties: {
             ruleText: {
               type: "string",
-              description: "The complete text of the new rule to append",
+              description: "The text of the new rule to append",
             },
             workspaceRoot: {
               type: "string",
@@ -417,7 +417,7 @@ export class RulesModule implements GiggleModule {
       },
       {
         name: "giggle_rules_edit",
-        description: "Edit an existing numbered rule across all 6 mirrored rule files cleanly and atomically",
+        description: "Edit an existing numbered rule across all 6 mirrored rule files",
         parameters: {
           type: "object",
           properties: {

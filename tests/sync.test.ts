@@ -6,7 +6,7 @@ import { initRepository } from "../src/core/repository"
 import { executeSync } from "../src/modules/sync/syncEngine"
 import { resolveHead } from "../src/core/counter"
 
-describe("Sync Engine Flow 1", () => {
+describe("Sync Engine", () => {
   it("auto-commits uncommitted preset files and advances the counter without a push step", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-sync-"))
     const config = initRepository(tempDir, "main")

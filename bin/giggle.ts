@@ -168,8 +168,8 @@ async function main() {
           process.exit(1)
         }
         const res = addMirroredRule(ruleText, rootDir)
-        console.log(`Successfully added Rule ${res.newRuleNumber}: ${res.summary}`)
-        console.log(`Updated all ${res.updatedFiles.length} mirrored rule files cleanly.`)
+        console.log(`Added Rule ${res.newRuleNumber}: ${res.summary}`)
+        console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
       } else if (sub === "edit") {
         const ruleNum = parseInt(args[2] || "", 10)
         const newText = args.slice(3).join(" ").trim()
@@ -178,10 +178,10 @@ async function main() {
           process.exit(1)
         }
         const res = editMirroredRule(ruleNum, newText, rootDir)
-        console.log(`Successfully updated Rule ${res.ruleNumber}:`)
+        console.log(`Updated Rule ${res.ruleNumber}:`)
         console.log(`  Previous: ${res.oldSummary}`)
         console.log(`  Updated:  ${res.newSummary}`)
-        console.log(`Updated all ${res.updatedFiles.length} mirrored rule files cleanly.`)
+        console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
       } else {
         console.error(`Unknown rules subcommand: ${sub}. Available: check, add, edit`)
         process.exit(1)
@@ -197,7 +197,7 @@ async function main() {
       if (sub === "list" || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f") {
         const force = args.includes("/force") || args.includes("/f") || args.includes("--force") || args.includes("-f") || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f"
         const skills = listSkills(rootDir, force)
-        console.log(`Discovered ${skills.length} skills in workspace:`)
+        console.log(`Found ${skills.length} skills in workspace:`)
         for (const s of skills) {
           console.log(`  ${s.name}`)
           if (s.description) {
@@ -225,7 +225,7 @@ async function main() {
       } else if (sub === "sync") {
         const targetArg = args[2]
         const res = syncSkills(rootDir, targetArg)
-        console.log(`Successfully synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
+        console.log(`Synced ${res.syncedCount} skills (${res.syncedFiles.length} pointer files)`)
         console.log(`Target location: ${res.targetDir}`)
       } else {
         console.error(`Unknown skill subcommand: ${sub}. Available: list, search, sync`)
@@ -273,10 +273,10 @@ Usage:
 
 Commands:
   init [directory]                    Initialize a new .giggle repository
-  sync [--remote <name>]              Auto-commit and synchronize with GitHub in one command
+  sync [--remote <name>]              Auto-commit and synchronize presets with remote
   commit [-m <message>]               Stage manifest files and commit (auto-increments count if omitted)
   status                              Display working tree status and manifest drift
-  remote add <name> <url>             Configure GitHub remote URL
+  remote add <name> <url>             Configure Git remote URL
   rules check                         Audit and report all 6 mirrored rules with 3-word previews
   rules add <rule text>               Add a new numbered rule across all 6 mirrored files
   rules edit <number> <new rule text> Edit an existing numbered rule across all 6 mirrored files

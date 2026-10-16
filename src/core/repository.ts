@@ -44,7 +44,7 @@ export function initRepository(targetDir: string, defaultBranch: string = "main"
     fs.writeFileSync(headFile, `ref: refs/heads/${defaultBranch}\n`, "utf8")
   }
 
-  // Initialize standard Git INI config file so git CLI commands run smoothly
+  // Initialize standard Git INI config file for git CLI operations
   const gitConfigFile = path.join(giggleDir, "config")
   if (!fs.existsSync(gitConfigFile)) {
     const gitConfigContent = [
@@ -91,7 +91,7 @@ export function initRepository(targetDir: string, defaultBranch: string = "main"
   if (!fs.existsSync(manifestFile)) {
     const starterManifest = [
       "# Giggle Manifest: explicitly tracked workspace preset paths",
-      "# Add paths or glob patterns to track and sync with GitHub",
+      "# Add paths or glob patterns to track and sync with remote repository",
       ".gigglemanifest",
       ".agents/**",
       "AGENTS.md",

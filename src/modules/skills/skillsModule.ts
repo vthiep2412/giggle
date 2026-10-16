@@ -186,14 +186,6 @@ export function computeFuzzyScore(query: string, target: string): number {
   if (t === q) return 1000
   if (t.includes(q)) return 500 + Math.floor(100 / (t.length + 1))
 
-  const queryWords = q.split(/\s+/).filter(Boolean)
-  let wordScore = 0
-  for (const qw of queryWords) {
-    if (t.includes(qw)) {
-      wordScore += 100
-    }
-  }
-
   let qIdx = 0
   let subseqScore = 0
   let consecutive = 0
@@ -208,9 +200,64 @@ export function computeFuzzyScore(query: string, target: string): number {
   }
 
   const isSubseq = qIdx === q.length
-  const finalSubseqScore = isSubseq ? subseqScore : 0
+  return isSubseq ? subseqScore : 0
+}
 
-  return wordScore + finalSubseqScore
+export function computeSkillScore(query: string, name: string, description: string): number {
+  const q = query.trim().toLowerCase()
+  const n = name.toLowerCase()
+  const d = description.toLowerCase()
+
+  if (!q) return 0
+  if (n === q) return 2000
+
+  let score = 0
+
+  // Exact phrase match
+  if (n.includes(q)) {
+    score += 1000 + Math.floor(100 / (n.length + 1))
+  }
+  if (d.includes(q)) {
+    score += 500 + Math.floor(100 / (d.length + 1))
+  }
+
+  const queryWords = q.split(/\s+/).filter(Boolean)
+
+  if (queryWords.length > 1) {
+    // Multi-word query: match words selectively
+    const matchingWords = queryWords.filter((w) => n.includes(w) || d.includes(w))
+    const allWordsPresent = matchingWords.length === queryWords.length
+    const anyWordInName = queryWords.some((w) => n.includes(w))
+
+    if (allWordsPresent) {
+      score += 400
+    }
+
+    if (anyWordInName) {
+      score += 250
+    }
+
+    // Require either phrase match, all words present, or at least one word in name
+    if (score < 200) {
+      return 0
+    }
+  } else {
+    // Single word query
+    const single = queryWords[0] || ""
+    if (n.includes(single)) {
+      score += 300
+    } else if (d.includes(single)) {
+      score += 150
+    } else {
+      // Subsequence match on skill name
+      const nameFuzzy = computeFuzzyScore(single, n)
+      if (nameFuzzy > 0) {
+        score += nameFuzzy * 2
+      }
+    }
+  }
+
+  return score
 }
 
 export function searchSkills(query: string, workspaceRoot?: string, force: boolean = false): SkillInfo[] {
@@ -223,12 +270,9 @@ export function searchSkills(query: string, workspaceRoot?: string, force: boole
   const scored: { skill: SkillInfo; score: number }[] = []
 
   for (const s of allSkills) {
-    const nameScore = computeFuzzyScore(q, s.name) * 2
-    const descScore = computeFuzzyScore(q, s.description)
-    const totalScore = nameScore + descScore
-
-    if (totalScore > 0) {
-      scored.push({ skill: s, score: totalScore })
+    const score = computeSkillScore(q, s.name, s.description)
+    if (score >= 100) {
+      scored.push({ skill: s, score })
     }
   }
 

@@ -277,6 +277,15 @@ export function searchSkills(query: string, workspaceRoot?: string, force: boole
   return scored.map((item) => item.skill)
 }
 
+const ALLOWED_SKILL_SUBDIRECTORIES = new Set([
+  "scripts",
+  "references",
+  "examples",
+  "resources",
+  "assets",
+  "docs",
+])
+
 function collectAllFilesRecursively(rootDir: string): string[] {
   const results: string[] = []
   if (!fs.existsSync(rootDir)) {
@@ -296,17 +305,33 @@ function collectAllFilesRecursively(rootDir: string): string[] {
       continue
     }
 
+    const isRootLevel = currentDir === rootDir
+
     for (const entry of entries) {
       if (entry.isSymbolicLink()) {
         continue
       }
       const fullPath = path.join(currentDir, entry.name)
       if (entry.isDirectory()) {
-        if (!IGNORED_DIRECTORIES.has(entry.name)) {
-          stack.push(fullPath)
+        if (IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) {
+          continue
         }
+        if (isRootLevel && !ALLOWED_SKILL_SUBDIRECTORIES.has(entry.name.toLowerCase())) {
+          continue
+        }
+        stack.push(fullPath)
       } else if (entry.isFile()) {
-        results.push(path.relative(rootDir, fullPath))
+        if (isRootLevel) {
+          // At skill root level, strictly allow only SKILL.md
+          if (entry.name.toLowerCase() === "skill.md") {
+            results.push(path.relative(rootDir, fullPath))
+          }
+        } else {
+          // Inside allowed subdirectories (scripts, references, etc.), allow non-hidden files
+          if (!entry.name.startsWith(".")) {
+            results.push(path.relative(rootDir, fullPath))
+          }
+        }
       }
     }
   }

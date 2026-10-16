@@ -138,6 +138,10 @@ no_auto_read: false
     const realScriptFile = path.join(scriptsDir, "deploy.sh")
     fs.writeFileSync(realScriptFile, `echo "running heavy deploy..."`, "utf8")
 
+    // Add repo root junk files that should never be synced
+    fs.writeFileSync(path.join(skill1Dir, "package.json"), "{}", "utf8")
+    fs.writeFileSync(path.join(skill1Dir, "bun.lock"), "lock", "utf8")
+
     const skill2Dir = path.join(skillsDir, "manual-review")
     fs.mkdirSync(skill2Dir, { recursive: true })
     const realSkillFile2 = path.join(skill2Dir, "SKILL.md")
@@ -157,6 +161,10 @@ no_auto_read: false
     expect(fs.existsSync(syncedSkill1Path)).toBe(true)
     expect(fs.existsSync(syncedScriptPath)).toBe(true)
     expect(fs.existsSync(syncedSkill2Path)).toBe(true)
+
+    // Verify repo-level root junk files were excluded
+    expect(fs.existsSync(path.join(targetDir, "deployer", "package.json"))).toBe(false)
+    expect(fs.existsSync(path.join(targetDir, "deployer", "bun.lock"))).toBe(false)
 
     // Standard skill: no warning
     const skill1Content = fs.readFileSync(syncedSkill1Path, "utf8")

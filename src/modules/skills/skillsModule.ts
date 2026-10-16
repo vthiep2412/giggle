@@ -458,14 +458,18 @@ export class SkillsModule implements GiggleModule {
           const root = args.workspaceRoot || this.context?.rootDir || process.cwd()
           const force = Boolean(args.force)
           const skills = listSkills(root, force)
-          return {
-            total: skills.length,
-            skills: skills.map((s) => ({
-              name: s.name,
-              description: s.description,
-              path: s.filePath,
-            })),
+          if (skills.length === 0) {
+            return "No skills found in workspace."
           }
+          const lines = [`Total: ${skills.length} skills\n`]
+          for (const s of skills) {
+            lines.push(`- ${s.name}`)
+            if (s.description) {
+              lines.push(`  Description: ${s.description}`)
+            }
+            lines.push(`  Path: ${s.filePath}`)
+          }
+          return lines.join("\n")
         },
       },
       {
@@ -493,14 +497,18 @@ export class SkillsModule implements GiggleModule {
           const root = args.workspaceRoot || this.context?.rootDir || process.cwd()
           const force = Boolean(args.force)
           const matches = searchSkills(args.query || "", root, force)
-          return {
-            total: matches.length,
-            skills: matches.map((s) => ({
-              name: s.name,
-              description: s.description,
-              path: s.filePath,
-            })),
+          if (matches.length === 0) {
+            return `No skills found matching "${args.query}".`
           }
+          const lines = [`Total: ${matches.length} matching skills\n`]
+          for (const s of matches) {
+            lines.push(`- ${s.name}`)
+            if (s.description) {
+              lines.push(`  Description: ${s.description}`)
+            }
+            lines.push(`  Path: ${s.filePath}`)
+          }
+          return lines.join("\n")
         },
       },
       {

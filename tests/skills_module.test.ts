@@ -187,7 +187,7 @@ no_auto_read: false
     expect(syncTool).toBeDefined()
   })
 
-  it("returns compact skill payload without rawContent or extraneous metadata", async () => {
+  it("returns compact plain text skill list without json overhead or rawContent", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-skills-mcp-"))
     const skillsDir = path.join(tempDir, ".agents", "skills", "test-compact")
     fs.mkdirSync(skillsDir, { recursive: true })
@@ -203,15 +203,11 @@ no_auto_read: false
     const listTool = mcpTools.find((t) => t.name === "giggle_skill_list")!
 
     const result = await listTool.execute({ workspaceRoot: tempDir })
-    expect(result.total).toBe(1)
-    expect(result.skills.length).toBe(1)
-
-    const skillItem = result.skills[0]
-    expect(skillItem.name).toBe("test-compact")
-    expect(skillItem.description).toBe("Compact description.")
-    expect(skillItem.path).toBeDefined()
-    expect((skillItem as any).rawContent).toBeUndefined()
-    expect((skillItem as any).skillDir).toBeUndefined()
-    expect((skillItem as any).autoRead).toBeUndefined()
+    expect(typeof result).toBe("string")
+    expect(result.includes("Total: 1 skills")).toBe(true)
+    expect(result.includes("- test-compact")).toBe(true)
+    expect(result.includes("Description: Compact description.")).toBe(true)
+    expect(result.includes("Path:")).toBe(true)
+    expect(result.includes("Raw documentation body")).toBe(false)
   })
 })

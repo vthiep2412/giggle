@@ -157,7 +157,7 @@ export function createMcpServer(customRootDir?: string) {
         content: [
           {
             type: "text",
-            text: JSON.stringify(toolRes, null, 2),
+            text: typeof toolRes === "string" ? toolRes : JSON.stringify(toolRes, null, 2),
           },
         ],
       }

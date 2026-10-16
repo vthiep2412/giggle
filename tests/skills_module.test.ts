@@ -7,6 +7,7 @@ import {
   listSkills,
   searchSkills,
   syncSkills,
+  computeFuzzyScore,
   SkillsModule,
 } from "../src/modules/skills/skillsModule"
 import { createDefaultRegistry } from "../src/modules/registry"
@@ -70,7 +71,18 @@ no_auto_read: false
     expect(info3.autoRead).toBe(true)
   })
 
-  it("lists and searches skills in workspace directory", () => {
+  it("computes fuzzy match scores correctly", () => {
+    const scoreExact = computeFuzzyScore("commit", "commit")
+    expect(scoreExact).toBe(1000)
+
+    const scoreSub = computeFuzzyScore("cmmt", "commit")
+    expect(scoreSub).toBeGreaterThan(0)
+
+    const scoreNone = computeFuzzyScore("zzzz", "commit")
+    expect(scoreNone).toBe(0)
+  })
+
+  it("lists skills filtering non-auto-read by default and revealing with force", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-skills-test-"))
     const skillsDir = path.join(tempDir, ".agents", "skills")
     fs.mkdirSync(skillsDir, { recursive: true })
@@ -91,34 +103,34 @@ no_auto_read: false
       "utf8"
     )
 
-    const listed = listSkills(tempDir)
-    expect(listed.length).toBe(2)
-    expect(listed[0]!.name).toBe("caveman")
-    expect(listed[0]!.autoRead).toBe(false)
-    expect(listed[1]!.name).toBe("git-helper")
-    expect(listed[1]!.autoRead).toBe(true)
+    // Default: only auto-read skills (hides caveman)
+    const defaultList = listSkills(tempDir, false)
+    expect(defaultList.length).toBe(1)
+    expect(defaultList[0]!.name).toBe("git-helper")
 
-    const searchBranch = searchSkills("branch", tempDir)
-    expect(searchBranch.length).toBe(1)
-    expect(searchBranch[0]!.name).toBe("git-helper")
+    // Force: includes non-auto-read skills
+    const forcedList = listSkills(tempDir, true)
+    expect(forcedList.length).toBe(2)
+    expect(forcedList.map((s) => s.name)).toEqual(["caveman", "git-helper"])
 
-    const searchCaveman = searchSkills("caveman", tempDir)
-    expect(searchCaveman.length).toBe(1)
-    expect(searchCaveman[0]!.name).toBe("caveman")
+    // Fuzzy search
+    const searchFuzzy = searchSkills("gthelpr", tempDir, false)
+    expect(searchFuzzy.length).toBe(1)
+    expect(searchFuzzy[0]!.name).toBe("git-helper")
   })
 
-  it("synchronizes skills as path-only pointer files without copying raw contents", () => {
+  it("synchronizes skills as path-only pointer files with warnings for manual skills", () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-skills-src-"))
     const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-skills-target-"))
 
     const skillsDir = path.join(tempDir, ".agents", "skills")
-    const skillDir = path.join(skillsDir, "deployer")
-    const scriptsDir = path.join(skillDir, "scripts")
+    const skill1Dir = path.join(skillsDir, "deployer")
+    const scriptsDir = path.join(skill1Dir, "scripts")
     fs.mkdirSync(scriptsDir, { recursive: true })
 
-    const realSkillFile = path.join(skillDir, "SKILL.md")
+    const realSkillFile1 = path.join(skill1Dir, "SKILL.md")
     fs.writeFileSync(
-      realSkillFile,
+      realSkillFile1,
       `---\nname: deployer\ndescription: Cloud deployment pipeline.\n---\n\n# Real Large Documentation\n1000 lines of guides...`,
       "utf8"
     )
@@ -126,28 +138,42 @@ no_auto_read: false
     const realScriptFile = path.join(scriptsDir, "deploy.sh")
     fs.writeFileSync(realScriptFile, `echo "running heavy deploy..."`, "utf8")
 
+    const skill2Dir = path.join(skillsDir, "manual-review")
+    fs.mkdirSync(skill2Dir, { recursive: true })
+    const realSkillFile2 = path.join(skill2Dir, "SKILL.md")
+    fs.writeFileSync(
+      realSkillFile2,
+      `---\nname: manual-review\ndescription: Manual review gate.\nauto_read: false\n---\n`,
+      "utf8"
+    )
+
     const res = syncSkills(tempDir, targetDir)
-    expect(res.syncedCount).toBe(1)
-    expect(res.syncedFiles.length).toBe(2)
+    expect(res.syncedCount).toBe(2)
 
-    const syncedSkillPath = path.join(targetDir, "deployer", "SKILL.md")
+    const syncedSkill1Path = path.join(targetDir, "deployer", "SKILL.md")
     const syncedScriptPath = path.join(targetDir, "deployer", "scripts", "deploy.sh")
+    const syncedSkill2Path = path.join(targetDir, "manual-review", "SKILL.md")
 
-    expect(fs.existsSync(syncedSkillPath)).toBe(true)
+    expect(fs.existsSync(syncedSkill1Path)).toBe(true)
     expect(fs.existsSync(syncedScriptPath)).toBe(true)
+    expect(fs.existsSync(syncedSkill2Path)).toBe(true)
 
-    const skillContent = fs.readFileSync(syncedSkillPath, "utf8")
-    expect(skillContent.includes("name: deployer")).toBe(true)
-    expect(skillContent.includes("description: Cloud deployment pipeline.")).toBe(true)
-    expect(skillContent.includes("1000 lines of guides")).toBe(false)
-    expect(skillContent.includes(`file:///${realSkillFile.replace(/\\/g, "/")}`)).toBe(true)
+    // Standard skill: no warning
+    const skill1Content = fs.readFileSync(syncedSkill1Path, "utf8")
+    expect(skill1Content.includes("name: deployer")).toBe(true)
+    expect(skill1Content.includes("1000 lines of guides")).toBe(false)
+    expect(skill1Content.includes("> Warning: Ignore this skill")).toBe(false)
+    expect(skill1Content.includes(`file:///${realSkillFile1.replace(/\\/g, "/")}`)).toBe(true)
 
-    const scriptContent = fs.readFileSync(syncedScriptPath, "utf8")
-    expect(scriptContent.includes("running heavy deploy")).toBe(false)
-    expect(scriptContent.trim()).toBe(`file:///${realScriptFile.replace(/\\/g, "/")}`)
+    // Manual skill: contains warning blockquote without auto_read tag in frontmatter
+    const skill2Content = fs.readFileSync(syncedSkill2Path, "utf8")
+    expect(skill2Content.includes("name: manual-review")).toBe(true)
+    expect(skill2Content.includes("auto_read: false")).toBe(false)
+    expect(skill2Content.includes("> Warning: Ignore this skill unless explicitly requested by the user.")).toBe(true)
+    expect(skill2Content.includes(`file:///${realSkillFile2.replace(/\\/g, "/")}`)).toBe(true)
   })
 
-  it("exposes MCP tools in registry dynamically", () => {
+  it("exposes MCP tools with force parameter dynamically", () => {
     const registry = createDefaultRegistry()
     const tools = registry.getAllMcpTools()
 
@@ -156,6 +182,7 @@ no_auto_read: false
     const syncTool = tools.find((t) => t.name === "giggle_skill_sync")
 
     expect(listTool).toBeDefined()
+    expect(listTool?.parameters.properties.force).toBeDefined()
     expect(searchTool).toBeDefined()
     expect(syncTool).toBeDefined()
   })

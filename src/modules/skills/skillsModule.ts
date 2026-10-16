@@ -19,6 +19,19 @@ export interface SkillSyncResult {
   syncedFiles: string[]
 }
 
+const IGNORED_DIRECTORIES = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "out",
+  "coverage",
+  ".cache",
+  ".github",
+  ".idea",
+  ".vscode",
+  ".bun-build",
+])
+
 export function parseSkillFrontmatter(content: string, filePath: string): SkillInfo {
   const skillDir = path.dirname(filePath)
   const fallbackName = path.basename(skillDir)
@@ -123,7 +136,7 @@ export function getSkillsDirectory(workspaceRoot?: string): string | null {
   return null
 }
 
-export function listSkills(workspaceRoot?: string): SkillInfo[] {
+export function listSkills(workspaceRoot?: string, force: boolean = false): SkillInfo[] {
   const skillsDir = getSkillsDirectory(workspaceRoot)
   if (!skillsDir || !fs.existsSync(skillsDir)) {
     return []
@@ -152,7 +165,10 @@ export function listSkills(workspaceRoot?: string): SkillInfo[] {
     if (skillFile) {
       try {
         const content = fs.readFileSync(skillFile, "utf8")
-        results.push(parseSkillFrontmatter(content, skillFile))
+        const parsed = parseSkillFrontmatter(content, skillFile)
+        if (force || parsed.autoRead) {
+          results.push(parsed)
+        }
       } catch {
         // Skip unreadable files
       }
@@ -162,16 +178,61 @@ export function listSkills(workspaceRoot?: string): SkillInfo[] {
   return results.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-export function searchSkills(query: string, workspaceRoot?: string): SkillInfo[] {
-  const allSkills = listSkills(workspaceRoot)
+export function computeFuzzyScore(query: string, target: string): number {
+  const q = query.trim().toLowerCase()
+  const t = target.toLowerCase()
+  if (!q || !t) return 0
+  if (t === q) return 1000
+  if (t.includes(q)) return 500 + Math.floor(100 / (t.length + 1))
+
+  const queryWords = q.split(/\s+/).filter(Boolean)
+  let wordScore = 0
+  for (const qw of queryWords) {
+    if (t.includes(qw)) {
+      wordScore += 100
+    }
+  }
+
+  let qIdx = 0
+  let subseqScore = 0
+  let consecutive = 0
+  for (let tIdx = 0; tIdx < t.length && qIdx < q.length; tIdx++) {
+    if (t[tIdx] === q[qIdx]) {
+      qIdx++
+      consecutive++
+      subseqScore += 5 + consecutive * 5
+    } else {
+      consecutive = 0
+    }
+  }
+
+  const isSubseq = qIdx === q.length
+  const finalSubseqScore = isSubseq ? subseqScore : 0
+
+  return wordScore + finalSubseqScore
+}
+
+export function searchSkills(query: string, workspaceRoot?: string, force: boolean = false): SkillInfo[] {
+  const allSkills = listSkills(workspaceRoot, force)
   const q = query.trim().toLowerCase()
   if (!q) {
     return allSkills
   }
 
-  return allSkills.filter((s) => {
-    return s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)
-  })
+  const scored: { skill: SkillInfo; score: number }[] = []
+
+  for (const s of allSkills) {
+    const nameScore = computeFuzzyScore(q, s.name) * 2
+    const descScore = computeFuzzyScore(q, s.description)
+    const totalScore = nameScore + descScore
+
+    if (totalScore > 0) {
+      scored.push({ skill: s, score: totalScore })
+    }
+  }
+
+  scored.sort((a, b) => b.score - a.score)
+  return scored.map((item) => item.skill)
 }
 
 function collectAllFilesRecursively(dir: string, baseDir: string = dir): string[] {
@@ -182,10 +243,14 @@ function collectAllFilesRecursively(dir: string, baseDir: string = dir): string[
 
   const entries = fs.readdirSync(dir, { withFileTypes: true })
   for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
+      if (IGNORED_DIRECTORIES.has(entry.name)) {
+        continue
+      }
+      const fullPath = path.join(dir, entry.name)
       results.push(...collectAllFilesRecursively(fullPath, baseDir))
     } else if (entry.isFile()) {
+      const fullPath = path.join(dir, entry.name)
       results.push(path.relative(baseDir, fullPath))
     }
   }
@@ -194,7 +259,8 @@ function collectAllFilesRecursively(dir: string, baseDir: string = dir): string[
 }
 
 export function syncSkills(workspaceRoot?: string, targetGlobalDir?: string): SkillSyncResult {
-  const skills = listSkills(workspaceRoot)
+  // Always include all skills during sync so manual ones are available with warnings
+  const skills = listSkills(workspaceRoot, true)
   const targetDir = targetGlobalDir || path.join(os.homedir(), ".gemini", "antigravity", "skills")
 
   if (!fs.existsSync(targetDir)) {
@@ -223,15 +289,19 @@ export function syncSkills(workspaceRoot?: string, targetGlobalDir?: string): Sk
       const normalizedSourceUri = `file:///${sourceFile.replace(/\\/g, "/")}`
 
       if (path.basename(relFile).toLowerCase() === "skill.md") {
+        const warningBlock = skill.autoRead
+          ? ""
+          : "> Warning: Ignore this skill unless explicitly requested by the user.\n\n"
+
         const pointerContent = [
           "---",
           `name: ${skill.name}`,
           `description: ${skill.description}`,
           "---",
           "",
-          normalizedSourceUri,
+          warningBlock + normalizedSourceUri,
           "",
-        ].join("\n")
+        ].filter((part) => part !== "").join("\n")
 
         fs.writeFileSync(destFile, pointerContent, "utf8")
       } else {
@@ -252,7 +322,7 @@ export function syncSkills(workspaceRoot?: string, targetGlobalDir?: string): Sk
 
 export class SkillsModule implements GiggleModule {
   name = "skills"
-  description = "Skills discovery, search, and pointer synchronization module"
+  description = "Skills discovery, fuzzy search, and pointer synchronization module"
   private context?: GiggleModuleContext
 
   initialize(context: GiggleModuleContext): void {
@@ -268,30 +338,33 @@ export class SkillsModule implements GiggleModule {
           const sub = args[0] || "list"
           const rootDir = this.context?.rootDir || process.cwd()
 
-          if (sub === "list") {
-            const skills = listSkills(rootDir)
+          if (sub === "list" || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f") {
+            const force = args.includes("/force") || args.includes("/f") || args.includes("--force") || args.includes("-f") || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f"
+            const skills = listSkills(rootDir, force)
             console.log(`Discovered ${skills.length} skills in workspace:`)
             for (const s of skills) {
-              const tag = s.autoRead ? "[OK]" : "[MANUAL]"
-              console.log(`  ${tag} ${s.name} (auto-read: ${s.autoRead ? "yes" : "no"})`)
+              console.log(`  ${s.name}`)
               if (s.description) {
-                console.log(`       ${s.description}`)
+                console.log(`    ${s.description}`)
               }
-              console.log(`       Path: ${s.filePath}`)
+              console.log(`    Path: ${s.filePath}`)
             }
           } else if (sub === "search") {
-            const query = args.slice(1).join(" ").trim()
+            const force = args.includes("/force") || args.includes("/f") || args.includes("--force") || args.includes("-f")
+            const queryWords = args.slice(1).filter((a) => !["/force", "/f", "--force", "-f"].includes(a))
+            const query = queryWords.join(" ").trim()
             if (!query) {
-              console.error("Usage: giggle skill search <query>")
+              console.error("Usage: giggle skill search <query> [/force]")
               process.exit(1)
             }
-            const matches = searchSkills(query, rootDir)
+            const matches = searchSkills(query, rootDir, force)
             console.log(`Found ${matches.length} matching skills for '${query}':`)
             for (const m of matches) {
-              console.log(`  - ${m.name}: ${m.filePath}`)
+              console.log(`  ${m.name}`)
               if (m.description) {
                 console.log(`    ${m.description}`)
               }
+              console.log(`    Path: ${m.filePath}`)
             }
           } else if (sub === "sync") {
             const targetArg = args[1]
@@ -311,7 +384,7 @@ export class SkillsModule implements GiggleModule {
     return [
       {
         name: "giggle_skill_list",
-        description: "List all workspace skills with names, descriptions, file paths, and auto-read status",
+        description: "List workspace skills with names, descriptions, file paths, and auto-read status",
         parameters: {
           type: "object",
           properties: {
@@ -319,11 +392,16 @@ export class SkillsModule implements GiggleModule {
               type: "string",
               description: "Optional workspace root directory to scan",
             },
+            force: {
+              type: "boolean",
+              description: "Whether to include manual non auto read skills, defaults to false",
+            },
           },
         },
         execute: async (args: Record<string, any>) => {
           const root = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          const skills = listSkills(root)
+          const force = Boolean(args.force)
+          const skills = listSkills(root, force)
           return {
             total: skills.length,
             skills,
@@ -332,24 +410,29 @@ export class SkillsModule implements GiggleModule {
       },
       {
         name: "giggle_skill_search",
-        description: "Search skills across workspace by name and description keywords",
+        description: "Fuzzy search skills across workspace by name and description keywords",
         parameters: {
           type: "object",
           properties: {
             query: {
               type: "string",
-              description: "Search keyword to match against skill name or description",
+              description: "Search keyword or fuzzy pattern to match against skills",
             },
             workspaceRoot: {
               type: "string",
               description: "Optional workspace root directory",
+            },
+            force: {
+              type: "boolean",
+              description: "Whether to search across manual non auto read skills, defaults to false",
             },
           },
           required: ["query"],
         },
         execute: async (args: Record<string, any>) => {
           const root = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          const matches = searchSkills(args.query || "", root)
+          const force = Boolean(args.force)
+          const matches = searchSkills(args.query || "", root, force)
           return {
             query: args.query,
             total: matches.length,

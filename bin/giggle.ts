@@ -194,30 +194,33 @@ async function main() {
       const sub = args[1] || "list"
       const rootDir = findGiggleRoot() || findWorkspaceRoot()
 
-      if (sub === "list") {
-        const skills = listSkills(rootDir)
+      if (sub === "list" || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f") {
+        const force = args.includes("/force") || args.includes("/f") || args.includes("--force") || args.includes("-f") || sub === "/force" || sub === "/f" || sub === "--force" || sub === "-f"
+        const skills = listSkills(rootDir, force)
         console.log(`Discovered ${skills.length} skills in workspace:`)
         for (const s of skills) {
-          const tag = s.autoRead ? "[OK]" : "[MANUAL]"
-          console.log(`  ${tag} ${s.name} (auto-read: ${s.autoRead ? "yes" : "no"})`)
+          console.log(`  ${s.name}`)
           if (s.description) {
-            console.log(`       ${s.description}`)
+            console.log(`    ${s.description}`)
           }
-          console.log(`       Path: ${s.filePath}`)
+          console.log(`    Path: ${s.filePath}`)
         }
       } else if (sub === "search") {
-        const query = args.slice(2).join(" ").trim()
+        const force = args.includes("/force") || args.includes("/f") || args.includes("--force") || args.includes("-f")
+        const queryWords = args.slice(2).filter((a) => !["/force", "/f", "--force", "-f"].includes(a))
+        const query = queryWords.join(" ").trim()
         if (!query) {
-          console.error("Usage: giggle skill search <query>")
+          console.error("Usage: giggle skill search <query> [/force]")
           process.exit(1)
         }
-        const matches = searchSkills(query, rootDir)
+        const matches = searchSkills(query, rootDir, force)
         console.log(`Found ${matches.length} matching skills for '${query}':`)
         for (const m of matches) {
-          console.log(`  - ${m.name}: ${m.filePath}`)
+          console.log(`  ${m.name}`)
           if (m.description) {
             console.log(`    ${m.description}`)
           }
+          console.log(`    Path: ${m.filePath}`)
         }
       } else if (sub === "sync") {
         const targetArg = args[2]

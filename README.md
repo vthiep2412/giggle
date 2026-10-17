@@ -27,8 +27,11 @@ It allows developer workspaces to track, version-control, and synchronize shared
 # Install dependencies
 bun install
 
-# Compile self-contained executable
+# Compile self-contained executable to dist or your preferred bin directory
 bun build --compile --minify bin/giggle.ts --outfile dist/giggle.exe
+
+# Or output directly to your workspace bin
+bun build --compile --minify bin/giggle.ts --outfile C:/Workspace/.bin/giggle.exe
 ```
 
 ---

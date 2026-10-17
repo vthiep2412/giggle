@@ -261,4 +261,70 @@ no_auto_read: false
     expect(typeof mcpRes).toBe("string")
     expect(mcpRes.includes("workflow markdown files")).toBe(true)
   })
+
+  it("discovers nested subskills and prefixes subskill names with parent folder", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-nested-src-"))
+    const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-nested-target-"))
+    const skillsDir = path.join(tempDir, ".agents", "skills")
+
+    // Top-level skill
+    const topSkillDir = path.join(skillsDir, "coderabbit")
+    fs.mkdirSync(topSkillDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(topSkillDir, "SKILL.md"),
+      `---\nname: coderabbit\ndescription: CodeRabbit reviewer.\n---\n`,
+      "utf8"
+    )
+
+    // Parent suite router skill
+    const parentDir = path.join(skillsDir, "gstack")
+    fs.mkdirSync(parentDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(parentDir, "SKILL.md"),
+      `---\nname: gstack\ndescription: Gstack router.\n---\n`,
+      "utf8"
+    )
+
+    // Nested subskill without prefix
+    const subSkill1Dir = path.join(parentDir, "autoplan")
+    fs.mkdirSync(subSkill1Dir, { recursive: true })
+    fs.writeFileSync(
+      path.join(subSkill1Dir, "SKILL.md"),
+      `---\nname: autoplan\ndescription: Automated plan review.\n---\n`,
+      "utf8"
+    )
+
+    // Nested subskill already having prefix
+    const subSkill2Dir = path.join(parentDir, "gstack-upgrade")
+    fs.mkdirSync(subSkill2Dir, { recursive: true })
+    fs.writeFileSync(
+      path.join(subSkill2Dir, "SKILL.md"),
+      `---\nname: gstack-upgrade\ndescription: Upgrade gstack dependencies.\n---\n`,
+      "utf8"
+    )
+
+    const discovered = listSkills(tempDir, false)
+    expect(discovered.length).toBe(4)
+    expect(discovered.map((s) => s.name)).toEqual([
+      "coderabbit",
+      "gstack",
+      "gstack-autoplan",
+      "gstack-upgrade",
+    ])
+
+    // Test pointer sync
+    const pointerRes = syncSkills(tempDir, targetDir, false)
+    expect(pointerRes.syncedCount).toBe(4)
+    expect(fs.existsSync(path.join(targetDir, "gstack-autoplan", "SKILL.md"))).toBe(true)
+    expect(fs.existsSync(path.join(targetDir, "gstack-upgrade", "SKILL.md"))).toBe(true)
+    expect(fs.existsSync(path.join(targetDir, "coderabbit", "SKILL.md"))).toBe(true)
+
+    // Test workflow sync
+    const wfTargetDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-nested-wf-"))
+    const wfRes = syncSkills(tempDir, wfTargetDir, true)
+    expect(wfRes.syncedCount).toBe(4)
+    expect(fs.existsSync(path.join(wfTargetDir, "gstack-autoplan.md"))).toBe(true)
+    expect(fs.existsSync(path.join(wfTargetDir, "gstack-upgrade.md"))).toBe(true)
+    expect(fs.existsSync(path.join(wfTargetDir, "coderabbit.md"))).toBe(true)
+  })
 })

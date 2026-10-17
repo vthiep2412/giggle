@@ -134,42 +134,83 @@ export function getSkillsDirectory(workspaceRoot?: string): string | null {
   return null
 }
 
+export function resolveSkillName(parsedName: string, relativeDir: string): string {
+  const parts = relativeDir.split(/[\\/]/).filter(Boolean)
+  if (parts.length <= 1) {
+    return parsedName
+  }
+
+  const parent = parts[0] || ""
+  const prefix = `${parent.toLowerCase()}-`
+
+  if (parsedName.toLowerCase().startsWith(prefix)) {
+    return parsedName
+  }
+
+  return `${parent}-${parsedName}`
+}
+
+function findSkillFiles(skillsDir: string, maxDepth: number = 3): { skillFile: string; relativeDir: string }[] {
+  const results: { skillFile: string; relativeDir: string }[] = []
+  const possibleFiles = ["SKILL.md", "skill.md"]
+
+  function scan(currentDir: string, currentDepth: number) {
+    if (currentDepth > maxDepth) return
+
+    let entries: fs.Dirent[]
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    if (currentDir !== skillsDir) {
+      for (const f of possibleFiles) {
+        const p = path.join(currentDir, f)
+        if (fs.existsSync(p)) {
+          results.push({
+            skillFile: p,
+            relativeDir: path.relative(skillsDir, currentDir),
+          })
+          break
+        }
+      }
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+      if (IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue
+      if (ALLOWED_SKILL_SUBDIRECTORIES.has(entry.name.toLowerCase())) continue
+
+      scan(path.join(currentDir, entry.name), currentDepth + 1)
+    }
+  }
+
+  scan(skillsDir, 1)
+  return results
+}
+
 export function listSkills(workspaceRoot?: string, force: boolean = false): SkillInfo[] {
   const skillsDir = getSkillsDirectory(workspaceRoot)
   if (!skillsDir || !fs.existsSync(skillsDir)) {
     return []
   }
 
-  const entries = fs.readdirSync(skillsDir, { withFileTypes: true })
+  const found = findSkillFiles(skillsDir)
   const results: SkillInfo[] = []
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue
-    }
+  for (const item of found) {
+    try {
+      const content = fs.readFileSync(item.skillFile, "utf8")
+      const parsed = parseSkillFrontmatter(content, item.skillFile)
+      const effectiveName = resolveSkillName(parsed.name, item.relativeDir)
+      parsed.name = effectiveName
 
-    const dirPath = path.join(skillsDir, entry.name)
-    const possibleFiles = ["SKILL.md", "skill.md"]
-    let skillFile: string | null = null
-
-    for (const f of possibleFiles) {
-      const p = path.join(dirPath, f)
-      if (fs.existsSync(p)) {
-        skillFile = p
-        break
+      if (force || parsed.autoRead) {
+        results.push(parsed)
       }
-    }
-
-    if (skillFile) {
-      try {
-        const content = fs.readFileSync(skillFile, "utf8")
-        const parsed = parseSkillFrontmatter(content, skillFile)
-        if (force || parsed.autoRead) {
-          results.push(parsed)
-        }
-      } catch {
-        // Skip unreadable files
-      }
+    } catch {
+      // Skip unreadable files
     }
   }
 

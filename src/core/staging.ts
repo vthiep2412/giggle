@@ -3,6 +3,7 @@ import * as path from "node:path"
 import { writeBlob, writeTree, writeCommit } from "./objects"
 import { resolveHead, generateAutoCommitMessage } from "./counter"
 import { updateRef } from "./repository"
+import { loadIndex, saveIndex, type GiggleIndex } from "./indexCache"
 import type { TreeEntry, CommitObject } from "./types"
 
 interface TreeNode {
@@ -21,22 +22,62 @@ export function buildHierarchicalTree(rootDir: string, giggleDir: string, relFil
     children: new Map(),
   }
 
+  const index = loadIndex(giggleDir)
+  const updatedIndex: GiggleIndex = {
+    version: 1,
+    entries: {},
+  }
+
   for (const relPath of relFilePaths) {
     const fullPath = path.join(rootDir, relPath)
-    if (!fs.existsSync(fullPath)) {
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(fullPath)
+    } catch {
       continue
     }
 
-    const stat = fs.statSync(fullPath)
     if (!stat.isFile()) {
       continue
     }
 
-    const data = fs.readFileSync(fullPath)
-    const blobOid = writeBlob(giggleDir, data)
-    // 100755 for executable, 100644 for regular file
     const isExecutable = (stat.mode & 0o111) !== 0
-    const mode = isExecutable ? "100755" : "100644"
+    const defaultMode = isExecutable ? "100755" : "100644"
+
+    let blobOid: string
+    let mode: string = defaultMode
+
+    const cached = index.entries[relPath]
+    const objectPath = cached
+      ? path.join(giggleDir, "objects", cached.oid.slice(0, 2), cached.oid.slice(2))
+      : ""
+
+    if (
+      cached &&
+      cached.mtimeMs === stat.mtimeMs &&
+      cached.size === stat.size &&
+      fs.existsSync(objectPath)
+    ) {
+      // Re-use cached blob OID if file stat has not changed and object exists
+      blobOid = cached.oid
+      mode = cached.mode || defaultMode
+    } else {
+      // File modified or new: read and compress into loose object
+      let data: Buffer
+      try {
+        data = fs.readFileSync(fullPath)
+      } catch {
+        continue
+      }
+      blobOid = writeBlob(giggleDir, data)
+    }
+
+    updatedIndex.entries[relPath] = {
+      oid: blobOid,
+      mtimeMs: stat.mtimeMs,
+      size: stat.size,
+      mode,
+    }
 
     const parts = relPath.replace(/\\/g, "/").split("/").filter((p) => p.length > 0)
     let current = rootNode
@@ -70,7 +111,9 @@ export function buildHierarchicalTree(rootDir: string, giggleDir: string, relFil
     }
   }
 
-  return writeTreeNode(giggleDir, rootNode)
+  const treeOid = writeTreeNode(giggleDir, rootNode)
+  saveIndex(giggleDir, updatedIndex)
+  return treeOid
 }
 
 function writeTreeNode(giggleDir: string, node: TreeNode): string {

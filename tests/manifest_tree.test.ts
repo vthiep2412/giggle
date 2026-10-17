@@ -69,6 +69,14 @@ AGENTS.md
     const head = resolveHead(config.giggleDir)
     expect(head.commitOid).toBe(result2.commitOid)
 
+    // Verify index cache persisted and matches
+    const indexPath = path.join(config.giggleDir, "index.json")
+    expect(fs.existsSync(indexPath)).toBe(true)
+    const indexData = JSON.parse(fs.readFileSync(indexPath, "utf8"))
+    expect(indexData.entries["AGENTS.md"]).toBeDefined()
+    expect(indexData.entries["AGENTS.md"].oid.length).toBe(40)
+    expect(typeof indexData.entries["AGENTS.md"].mtimeMs).toBe("number")
+
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
 })

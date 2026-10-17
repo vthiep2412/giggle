@@ -31,6 +31,47 @@ const IGNORED_DIRECTORIES = new Set([
   ".bun-build",
 ])
 
+export const ALLOWED_SKILL_SUBDIRECTORIES = new Set([
+  "scripts",
+  "references",
+  "examples",
+  "resources",
+  "assets",
+  "docs",
+])
+
+export function readFrontmatterHeader(filePath: string, maxBytes: number = 4096): string {
+  let fd: number | null = null
+  try {
+    fd = fs.openSync(filePath, "r")
+    const buffer = Buffer.alloc(maxBytes)
+    const bytesRead = fs.readSync(fd, buffer, 0, maxBytes, 0)
+    return buffer.toString("utf8", 0, bytesRead)
+  } catch {
+    return ""
+  } finally {
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd)
+      } catch {
+        // Ignore close error
+      }
+    }
+  }
+}
+
+export function readSkillFrontmatterContent(filePath: string): string {
+  const header = readFrontmatterHeader(filePath, 4096)
+  if (header.match(/^---\r?\n[\s\S]*?\r?\n---/)) {
+    return header
+  }
+  try {
+    return fs.readFileSync(filePath, "utf8")
+  } catch {
+    return ""
+  }
+}
+
 export function parseSkillFrontmatter(content: string, filePath: string): SkillInfo {
   const cleanContent = content.replace(/^\uFEFF/, "")
   const skillDir = path.dirname(filePath)
@@ -157,9 +198,24 @@ export function resolveSkillName(parsedName: string, relativeDir: string): strin
   return `${parent}-${parsedName}`
 }
 
+const INTERNAL_SKILL_SUBDIRECTORIES = new Set([
+  "src",
+  "test",
+  "tests",
+  "spec",
+  "bin",
+  "sections",
+  "fixtures",
+  "lib",
+  "internal",
+  "build",
+  "out",
+  "target",
+  "vendor",
+])
+
 function findSkillFiles(skillsDir: string, maxDepth: number = 3): { skillFile: string; relativeDir: string }[] {
   const results: { skillFile: string; relativeDir: string }[] = []
-  const possibleFiles = ["SKILL.md", "skill.md"]
 
   function scan(currentDir: string, currentDepth: number) {
     if (currentDepth > maxDepth) return
@@ -172,14 +228,17 @@ function findSkillFiles(skillsDir: string, maxDepth: number = 3): { skillFile: s
     }
 
     if (currentDir !== skillsDir) {
-      for (const f of possibleFiles) {
-        const p = path.join(currentDir, f)
-        if (fs.existsSync(p)) {
-          results.push({
-            skillFile: p,
-            relativeDir: path.relative(skillsDir, currentDir),
-          })
-          break
+      const skillEntry = entries.find(
+        (e) => (e.isFile() || e.isSymbolicLink()) && (e.name === "SKILL.md" || e.name === "skill.md")
+      )
+      if (skillEntry) {
+        results.push({
+          skillFile: path.join(currentDir, skillEntry.name),
+          relativeDir: path.relative(skillsDir, currentDir),
+        })
+        // Prune recursion at leaf skill root to avoid scanning deep source or test folders
+        if (currentDepth > 1) {
+          return
         }
       }
     }
@@ -188,13 +247,26 @@ function findSkillFiles(skillsDir: string, maxDepth: number = 3): { skillFile: s
       if (!entry.isDirectory() || entry.isSymbolicLink()) continue
       if (IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue
       if (ALLOWED_SKILL_SUBDIRECTORIES.has(entry.name.toLowerCase())) continue
+      if (INTERNAL_SKILL_SUBDIRECTORIES.has(entry.name.toLowerCase())) continue
 
       scan(path.join(currentDir, entry.name), currentDepth + 1)
     }
   }
 
-  scan(skillsDir, 1)
+  scan(skillsDir, 0)
   return results
+}
+
+interface SkillCacheEntry {
+  skillsDir: string
+  mtimeMs: number
+  allSkills: SkillInfo[]
+}
+
+let cachedSkillsEntry: SkillCacheEntry | null = null
+
+export function clearSkillCache(): void {
+  cachedSkillsEntry = null
 }
 
 export function listSkills(workspaceRoot?: string, force: boolean = false): SkillInfo[] {
@@ -203,25 +275,51 @@ export function listSkills(workspaceRoot?: string, force: boolean = false): Skil
     return []
   }
 
+  let dirMtimeMs = 0
+  try {
+    dirMtimeMs = fs.statSync(skillsDir).mtimeMs
+  } catch {
+    dirMtimeMs = 0
+  }
+
+  if (
+    cachedSkillsEntry &&
+    cachedSkillsEntry.skillsDir === skillsDir &&
+    cachedSkillsEntry.mtimeMs === dirMtimeMs
+  ) {
+    if (force) {
+      return cachedSkillsEntry.allSkills
+    }
+    return cachedSkillsEntry.allSkills.filter((s) => s.autoRead)
+  }
+
   const found = findSkillFiles(skillsDir)
-  const results: SkillInfo[] = []
+  const allResults: SkillInfo[] = []
 
   for (const item of found) {
     try {
-      const content = fs.readFileSync(item.skillFile, "utf8")
+      const content = readSkillFrontmatterContent(item.skillFile)
       const parsed = parseSkillFrontmatter(content, item.skillFile)
       const effectiveName = resolveSkillName(parsed.name, item.relativeDir)
       parsed.name = effectiveName
-
-      if (force || parsed.autoRead) {
-        results.push(parsed)
-      }
+      allResults.push(parsed)
     } catch {
       // Skip unreadable files
     }
   }
 
-  return results.sort((a, b) => a.name.localeCompare(b.name))
+  allResults.sort((a, b) => a.name.localeCompare(b.name))
+
+  cachedSkillsEntry = {
+    skillsDir,
+    mtimeMs: dirMtimeMs,
+    allSkills: allResults,
+  }
+
+  if (force) {
+    return allResults
+  }
+  return allResults.filter((s) => s.autoRead)
 }
 
 export function computeFuzzyScore(query: string, target: string): number {
@@ -325,15 +423,6 @@ export function searchSkills(query: string, workspaceRoot?: string, force: boole
   return scored.map((item) => item.skill)
 }
 
-const ALLOWED_SKILL_SUBDIRECTORIES = new Set([
-  "scripts",
-  "references",
-  "examples",
-  "resources",
-  "assets",
-  "docs",
-])
-
 function collectAllFilesRecursively(rootDir: string): string[] {
   const results: string[] = []
   if (!fs.existsSync(rootDir)) {
@@ -387,6 +476,28 @@ function collectAllFilesRecursively(rootDir: string): string[] {
   return results
 }
 
+function ensureDirExists(dirPath: string, verifiedDirs: Set<string>): void {
+  if (verifiedDirs.has(dirPath)) return
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true })
+  }
+  verifiedDirs.add(dirPath)
+}
+
+function writeFileIfChanged(filePath: string, content: string): void {
+  if (fs.existsSync(filePath)) {
+    try {
+      const existing = fs.readFileSync(filePath, "utf8")
+      if (existing === content) {
+        return
+      }
+    } catch {
+      // Fall through to write on read error
+    }
+  }
+  fs.writeFileSync(filePath, content, "utf8")
+}
+
 function sanitizeYamlDescriptionForWorkflow(desc: string): string {
   if (!desc) return '""'
   if (desc.includes(":") || desc.includes("#") || desc.includes('"') || desc.includes("'") || desc.includes("\n")) {
@@ -407,9 +518,8 @@ export function syncSkills(
     : path.join(os.homedir(), ".gemini", "antigravity", "skills")
   const targetDir = targetGlobalDir || defaultDir
 
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true })
-  }
+  const verifiedDirs = new Set<string>()
+  ensureDirExists(targetDir, verifiedDirs)
 
   const syncedFiles: string[] = []
 
@@ -433,7 +543,7 @@ export function syncSkills(
         "",
       ].filter((part) => part !== "").join("\n")
 
-      fs.writeFileSync(destFile, pointerContent, "utf8")
+      writeFileIfChanged(destFile, pointerContent)
       syncedFiles.push(destFile)
     }
 
@@ -446,9 +556,7 @@ export function syncSkills(
 
   for (const skill of skills) {
     const targetSkillDir = path.join(targetDir, skill.name)
-    if (!fs.existsSync(targetSkillDir)) {
-      fs.mkdirSync(targetSkillDir, { recursive: true })
-    }
+    ensureDirExists(targetSkillDir, verifiedDirs)
 
     const relativeFiles = collectAllFilesRecursively(skill.skillDir)
 
@@ -457,9 +565,7 @@ export function syncSkills(
       const destFile = path.join(targetSkillDir, relFile)
       const destFolder = path.dirname(destFile)
 
-      if (!fs.existsSync(destFolder)) {
-        fs.mkdirSync(destFolder, { recursive: true })
-      }
+      ensureDirExists(destFolder, verifiedDirs)
 
       const normalizedSourceUri = `file:///${sourceFile.replace(/\\/g, "/")}`
 
@@ -478,10 +584,10 @@ export function syncSkills(
           "",
         ].filter((part) => part !== "").join("\n")
 
-        fs.writeFileSync(destFile, pointerContent, "utf8")
+        writeFileIfChanged(destFile, pointerContent)
       } else {
         const pointerContent = `${normalizedSourceUri}\n`
-        fs.writeFileSync(destFile, pointerContent, "utf8")
+        writeFileIfChanged(destFile, pointerContent)
       }
 
       syncedFiles.push(destFile)

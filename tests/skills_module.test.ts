@@ -8,6 +8,8 @@ import {
   searchSkills,
   syncSkills,
   computeFuzzyScore,
+  readSkillFrontmatterContent,
+  clearSkillCache,
   SkillsModule,
 } from "../src/modules/skills/skillsModule"
 import { createDefaultRegistry } from "../src/modules/registry"
@@ -341,5 +343,44 @@ no_auto_read: false
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-autoplan.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-upgrade.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "coderabbit.md"))).toBe(true)
+  })
+
+  it("reads frontmatter header using buffer without loading full file", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-frontmatter-"))
+    const filePath = path.join(tempDir, "SKILL.md")
+    const header = `---\nname: large-skill\ndescription: Fast buffer testing.\n---\n`
+    const longBody = "\n# Extra Content\n" + "x".repeat(20000)
+    fs.writeFileSync(filePath, header + longBody, "utf8")
+
+    const content = readSkillFrontmatterContent(filePath)
+    expect(content.includes("Fast buffer testing.")).toBe(true)
+    const parsed = parseSkillFrontmatter(content, filePath)
+    expect(parsed.name).toBe("large-skill")
+    expect(parsed.description).toBe("Fast buffer testing.")
+
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  it("utilizes in-memory mtime cache and supports cache clearing", () => {
+    clearSkillCache()
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-cache-"))
+    const skillsDir = path.join(tempDir, ".agents", "skills")
+    fs.mkdirSync(skillsDir, { recursive: true })
+
+    const skill1 = path.join(skillsDir, "first")
+    fs.mkdirSync(skill1, { recursive: true })
+    fs.writeFileSync(path.join(skill1, "SKILL.md"), `---\nname: first\ndescription: First skill.\n---\n`, "utf8")
+
+    const firstRun = listSkills(tempDir, false)
+    expect(firstRun.length).toBe(1)
+    expect(firstRun[0]?.name).toBe("first")
+
+    // Second run should return cached result
+    const secondRun = listSkills(tempDir, false)
+    expect(secondRun.length).toBe(1)
+    expect(secondRun[0]?.name).toBe("first")
+
+    clearSkillCache()
+    fs.rmSync(tempDir, { recursive: true, force: true })
   })
 })

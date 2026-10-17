@@ -2,6 +2,7 @@ import * as fs from "node:fs"
 import * as path from "node:path"
 import { readLooseObject, parseTreeBuffer, parseCommitBuffer, hashObject } from "./objects"
 import { resolveHead } from "./counter"
+import { loadIndex, saveIndex } from "./indexCache"
 import type { TreeEntry, FileStatus } from "./types"
 
 export interface TreeFileMap {
@@ -70,10 +71,19 @@ export function diffWorkingTree(rootDir: string, giggleDir: string, trackedRelPa
 
   const commitFiles = flattenTree(giggleDir, treeOid)
   const diskPathSet = new Set(trackedRelPaths)
+  const index = loadIndex(giggleDir)
+  let indexUpdated = false
 
   for (const relPath of trackedRelPaths) {
     const fullPath = path.join(rootDir, relPath)
-    if (!fs.existsSync(fullPath)) {
+    let stat: fs.Stats
+    try {
+      stat = fs.statSync(fullPath)
+    } catch {
+      continue
+    }
+
+    if (!stat.isFile()) {
       continue
     }
 
@@ -83,7 +93,19 @@ export function diffWorkingTree(rootDir: string, giggleDir: string, trackedRelPa
       continue
     }
 
-    // Only compute file hash when comparing against committed file
+    // Stat cache hit: file size and mtime match committed object
+    const cached = index.entries[relPath]
+    if (
+      cached &&
+      cached.mtimeMs === stat.mtimeMs &&
+      cached.size === stat.size &&
+      cached.oid === committed.oid
+    ) {
+      statuses.push({ path: relPath, status: "unmodified", staged: false })
+      continue
+    }
+
+    // Stat cache miss or stat changed: read and hash file
     let data: Buffer
     try {
       data = fs.readFileSync(fullPath)
@@ -96,6 +118,15 @@ export function diffWorkingTree(rootDir: string, giggleDir: string, trackedRelPa
       statuses.push({ path: relPath, status: "modified", staged: false })
     } else {
       statuses.push({ path: relPath, status: "unmodified", staged: false })
+      // Update cache entry for next time
+      const isExecutable = (stat.mode & 0o111) !== 0
+      index.entries[relPath] = {
+        oid,
+        mtimeMs: stat.mtimeMs,
+        size: stat.size,
+        mode: isExecutable ? "100755" : "100644",
+      }
+      indexUpdated = true
     }
   }
 
@@ -107,6 +138,10 @@ export function diffWorkingTree(rootDir: string, giggleDir: string, trackedRelPa
         statuses.push({ path: committedPath, status: "deleted", staged: false })
       }
     }
+  }
+
+  if (indexUpdated) {
+    saveIndex(giggleDir, index)
   }
 
   return statuses

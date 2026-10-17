@@ -10,6 +10,7 @@ import {
   computeFuzzyScore,
   readSkillFrontmatterContent,
   clearSkillCache,
+  formatPointerPath,
   SkillsModule,
 } from "../src/modules/skills/skillsModule"
 import { createDefaultRegistry } from "../src/modules/registry"
@@ -173,14 +174,16 @@ no_auto_read: false
     expect(skill1Content.includes("name: deployer")).toBe(true)
     expect(skill1Content.includes("1000 lines of guides")).toBe(false)
     expect(skill1Content.includes("> Warning: Ignore this skill")).toBe(false)
-    expect(skill1Content.includes(`file:///${realSkillFile1.replace(/\\/g, "/")}`)).toBe(true)
+    expect(skill1Content.includes(formatPointerPath(realSkillFile1))).toBe(true)
+    expect(skill1Content.includes("file:///")).toBe(false)
 
     // Manual skill: contains warning blockquote without auto_read tag in frontmatter
     const skill2Content = fs.readFileSync(syncedSkill2Path, "utf8")
     expect(skill2Content.includes("name: manual-review")).toBe(true)
     expect(skill2Content.includes("auto_read: false")).toBe(false)
     expect(skill2Content.includes("> Warning: Ignore this skill unless explicitly requested by the user.")).toBe(true)
-    expect(skill2Content.includes(`file:///${realSkillFile2.replace(/\\/g, "/")}`)).toBe(true)
+    expect(skill2Content.includes(formatPointerPath(realSkillFile2))).toBe(true)
+    expect(skill2Content.includes("file:///")).toBe(false)
   })
 
   it("exposes MCP tools with force parameter dynamically", () => {
@@ -243,9 +246,10 @@ no_auto_read: false
 
     const updatedContent = fs.readFileSync(targetFile, "utf8")
     expect(updatedContent.includes("name: coderabbit")).toBe(true)
-    // Verify colon-containing description is safely double-quoted
-    expect(updatedContent.includes('description: "Anti Slop: Rules for AI Coding Agents."')).toBe(true)
-    expect(updatedContent.includes("file:///")).toBe(true)
+    // Verify colon-containing short description is safely double-quoted with descr:
+    expect(updatedContent.includes('descr: "Anti Slop: Rules for AI Coding Agents."')).toBe(true)
+    expect(updatedContent.includes("file:///")).toBe(false)
+    expect(updatedContent.includes(formatPointerPath(path.join(skillDir, "SKILL.md")))).toBe(true)
     expect(updatedContent.includes("Perform strict review triage.")).toBe(false)
 
     // Test MCP tool execution with workflow flag
@@ -343,6 +347,22 @@ no_auto_read: false
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-autoplan.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-upgrade.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "coderabbit.md"))).toBe(true)
+
+    // Parent suite skill has short description: includes descr:
+    const cavemanWf = fs.readFileSync(path.join(wfTargetDir, "caveman.md"), "utf8")
+    expect(cavemanWf.includes("descr: Caveman mode.")).toBe(true)
+    expect(cavemanWf.includes("file:///")).toBe(false)
+
+    // Standalone skill has short description: includes descr:
+    const coderabbitWf = fs.readFileSync(path.join(wfTargetDir, "coderabbit.md"), "utf8")
+    expect(coderabbitWf.includes("descr: CodeRabbit reviewer.")).toBe(true)
+    expect(coderabbitWf.includes("file:///")).toBe(false)
+
+    // Subskills must not have description or descr: in workflow frontmatter
+    const autoplanWf = fs.readFileSync(path.join(wfTargetDir, "gstack-autoplan.md"), "utf8")
+    expect(autoplanWf.includes("descr:")).toBe(false)
+    expect(autoplanWf.includes("description:")).toBe(false)
+    expect(autoplanWf.includes("file:///")).toBe(false)
   })
 
   it("reads frontmatter header using buffer without loading full file", () => {

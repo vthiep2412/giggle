@@ -10,6 +10,12 @@ export interface SkillInfo {
   filePath: string
   skillDir: string
   autoRead: boolean
+  isSubskill?: boolean
+}
+
+export function formatPointerPath(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/")
+  return normalized.includes(" ") ? `"${normalized}"` : normalized
 }
 
 export interface SkillSyncResult {
@@ -300,6 +306,11 @@ export function listSkills(workspaceRoot?: string, force: boolean = false): Skil
     try {
       const content = readSkillFrontmatterContent(item.skillFile)
       const parsed = parseSkillFrontmatter(content, item.skillFile)
+      const parts = item.relativeDir.split(/[\\/]/).filter(Boolean)
+      const parent = parts[0] || ""
+      const isSub = parts.length > 1 && parsed.name.toLowerCase() !== parent.toLowerCase()
+      parsed.isSubskill = isSub
+
       const effectiveName = resolveSkillName(parsed.name, item.relativeDir)
       parsed.name = effectiveName
       allResults.push(parsed)
@@ -526,20 +537,34 @@ export function syncSkills(
   if (workflow) {
     for (const skill of skills) {
       const destFile = path.join(targetDir, `${skill.name}.md`)
-      const normalizedSourceUri = `file:///${skill.filePath.replace(/\\/g, "/")}`
+      const sourcePathStr = formatPointerPath(skill.filePath)
       const warningBlock = skill.autoRead
         ? ""
         : "> Warning: Ignore this skill unless explicitly requested by the user.\n\n"
 
-      const safeDesc = sanitizeYamlDescriptionForWorkflow(skill.description)
+      const hasShortDesc = Boolean(
+        skill.description &&
+        skill.description.trim().length > 0 &&
+        skill.description.trim().length <= 60
+      )
+      const shouldIncludeDescr = !skill.isSubskill && hasShortDesc
 
-      const pointerContent = [
+      const frontmatterLines = [
         "---",
         `name: ${skill.name}`,
-        `description: ${safeDesc}`,
-        "---",
+      ]
+
+      if (shouldIncludeDescr) {
+        const safeDesc = sanitizeYamlDescriptionForWorkflow(skill.description.trim())
+        frontmatterLines.push(`descr: ${safeDesc}`)
+      }
+
+      frontmatterLines.push("---")
+
+      const pointerContent = [
+        ...frontmatterLines,
         "",
-        warningBlock + normalizedSourceUri,
+        warningBlock + sourcePathStr,
         "",
       ].filter((part) => part !== "").join("\n")
 
@@ -567,7 +592,7 @@ export function syncSkills(
 
       ensureDirExists(destFolder, verifiedDirs)
 
-      const normalizedSourceUri = `file:///${sourceFile.replace(/\\/g, "/")}`
+      const sourcePathStr = formatPointerPath(sourceFile)
 
       if (path.basename(relFile).toLowerCase() === "skill.md") {
         const warningBlock = skill.autoRead
@@ -580,13 +605,13 @@ export function syncSkills(
           `description: ${skill.description}`,
           "---",
           "",
-          warningBlock + normalizedSourceUri,
+          warningBlock + sourcePathStr,
           "",
         ].filter((part) => part !== "").join("\n")
 
         writeFileIfChanged(destFile, pointerContent)
       } else {
-        const pointerContent = `${normalizedSourceUri}\n`
+        const pointerContent = `${sourcePathStr}\n`
         writeFileIfChanged(destFile, pointerContent)
       }
 

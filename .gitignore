@@ -111,3 +111,9 @@ vite.config.ts.timestamp-*
 .astro/
 # Turbo Repo
 .turbo
+
+# Giggle internal and local builds
+.giggle/
+.bin/
+*.exe
+dist/

@@ -303,9 +303,20 @@ no_auto_read: false
       "utf8"
     )
 
+    // Edge case: parent folder is caveman and subskill is caveman/caveman/SKILL.md
+    const cavemanParentDir = path.join(skillsDir, "caveman")
+    const cavemanSubDir = path.join(cavemanParentDir, "caveman")
+    fs.mkdirSync(cavemanSubDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(cavemanSubDir, "SKILL.md"),
+      `---\nname: caveman\ndescription: Caveman mode.\n---\n`,
+      "utf8"
+    )
+
     const discovered = listSkills(tempDir, false)
-    expect(discovered.length).toBe(4)
+    expect(discovered.length).toBe(5)
     expect(discovered.map((s) => s.name)).toEqual([
+      "caveman",
       "coderabbit",
       "gstack",
       "gstack-autoplan",
@@ -314,7 +325,9 @@ no_auto_read: false
 
     // Test pointer sync
     const pointerRes = syncSkills(tempDir, targetDir, false)
-    expect(pointerRes.syncedCount).toBe(4)
+    expect(pointerRes.syncedCount).toBe(5)
+    expect(fs.existsSync(path.join(targetDir, "caveman", "SKILL.md"))).toBe(true)
+    expect(fs.existsSync(path.join(targetDir, "caveman-caveman", "SKILL.md"))).toBe(false)
     expect(fs.existsSync(path.join(targetDir, "gstack-autoplan", "SKILL.md"))).toBe(true)
     expect(fs.existsSync(path.join(targetDir, "gstack-upgrade", "SKILL.md"))).toBe(true)
     expect(fs.existsSync(path.join(targetDir, "coderabbit", "SKILL.md"))).toBe(true)
@@ -322,7 +335,9 @@ no_auto_read: false
     // Test workflow sync
     const wfTargetDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-nested-wf-"))
     const wfRes = syncSkills(tempDir, wfTargetDir, true)
-    expect(wfRes.syncedCount).toBe(4)
+    expect(wfRes.syncedCount).toBe(5)
+    expect(fs.existsSync(path.join(wfTargetDir, "caveman.md"))).toBe(true)
+    expect(fs.existsSync(path.join(wfTargetDir, "caveman-caveman.md"))).toBe(false)
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-autoplan.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-upgrade.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "coderabbit.md"))).toBe(true)

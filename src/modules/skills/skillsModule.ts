@@ -141,9 +141,16 @@ export function resolveSkillName(parsedName: string, relativeDir: string): strin
   }
 
   const parent = parts[0] || ""
-  const prefix = `${parent.toLowerCase()}-`
+  const parentLower = parent.toLowerCase()
+  const nameLower = parsedName.toLowerCase()
 
-  if (parsedName.toLowerCase().startsWith(prefix)) {
+  // If subskill name is identical to parent folder name (e.g. caveman/caveman or ponytail/ponytail)
+  if (nameLower === parentLower) {
+    return parsedName
+  }
+
+  const prefix = `${parentLower}-`
+  if (nameLower.startsWith(prefix)) {
     return parsedName
   }
 

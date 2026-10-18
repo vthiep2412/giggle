@@ -89,22 +89,26 @@ giggle skill sync -w
 ### 4. MCP Server
 
 ```powershell
-# Start stdio MCP server for AI coding assistants
+# Start stdio MCP server for AI coding assistants (defaults to workspace root)
 giggle mcp
+
+# Start MCP server enforcing a specific workspace root directory
+giggle mcp C:/Workspace
+giggle mcp --workspace C:/Workspace
 ```
 
 ---
 
 ## MCP Server Configuration
 
-Add Giggle to your IDE or agent MCP settings:
+Add Giggle to your IDE or agent MCP settings with an enforced workspace:
 
 ```json
 {
   "mcpServers": {
     "giggle": {
       "command": "C:/Workspace/.bin/giggle.exe",
-      "args": ["mcp"]
+      "args": ["mcp", "C:/Workspace"]
     }
   }
 }

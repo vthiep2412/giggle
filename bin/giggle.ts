@@ -238,8 +238,28 @@ async function main() {
 
     case "mcp":
     case "serve": {
-      const rootDir = findGiggleRoot() || process.cwd()
-      await runMcpServer(rootDir)
+      const explicitWorkspace =
+        getArgValue(args, "--workspace") ||
+        getArgValue(args, "-w") ||
+        args.slice(1).find((a) => !a.startsWith("-")) ||
+        process.env.GIGGLE_WORKSPACE
+
+      let rootDir: string
+      let enforced = false
+
+      if (explicitWorkspace) {
+        const resolved = path.resolve(explicitWorkspace)
+        if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+          console.error(`Error: Workspace directory does not exist: ${resolved}`)
+          process.exit(1)
+        }
+        rootDir = resolved
+        enforced = true
+      } else {
+        rootDir = findGiggleRoot() || findWorkspaceRoot() || process.cwd()
+      }
+
+      await runMcpServer(rootDir, enforced)
       break
     }
 
@@ -287,7 +307,7 @@ Commands:
   skill list [/force]                 List workspace skills with names, descriptions, and paths
   skill search <query> [/force]       Fuzzy search skills across workspace by keywords
   skill sync [-w] [target]            Sync skills as global pointers or full workflows (-w)
-  mcp, serve                          Start the stdio Model Context Protocol (MCP) server
+  mcp, serve [workspace]              Start the stdio Model Context Protocol (MCP) server
   --help, -h                          Display help information
   --version, -v                       Display version number
 `)

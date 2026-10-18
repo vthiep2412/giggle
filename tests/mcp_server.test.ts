@@ -15,4 +15,14 @@ describe("Giggle MCP Server", () => {
 
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
+
+  it("enforces workspace root when explicitly provided", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-mcp-enforced-"))
+    initRepository(tempDir, "main")
+
+    const server = createMcpServer(tempDir, true)
+    expect(server).toBeDefined()
+
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  })
 })

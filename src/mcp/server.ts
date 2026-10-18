@@ -11,8 +11,10 @@ import { executeSync } from "../modules/sync/syncEngine"
 import { createDefaultRegistry } from "../modules/registry"
 import { resolveHead } from "../core/counter"
 
-export function createMcpServer(customRootDir?: string) {
-  const rootDir = customRootDir || findGiggleRoot(process.cwd()) || process.cwd()
+export function createMcpServer(customRootDir?: string, enforceWorkspace: boolean = Boolean(customRootDir)) {
+  const rootDir = customRootDir
+    ? path.resolve(customRootDir)
+    : findGiggleRoot(process.cwd()) || process.cwd()
   const giggleDir = path.join(rootDir, ".giggle")
 
   const server = new Server(
@@ -152,7 +154,11 @@ export function createMcpServer(customRootDir?: string) {
     // Check module registry tools
     const moduleTool = registry.getAllMcpTools().find((t) => t.name === name)
     if (moduleTool) {
-      const toolRes = await moduleTool.execute(args)
+      const toolArgs: Record<string, any> = { ...args }
+      if (enforceWorkspace && !toolArgs.workspaceRoot) {
+        toolArgs.workspaceRoot = rootDir
+      }
+      const toolRes = await moduleTool.execute(toolArgs)
       return {
         content: [
           {
@@ -169,8 +175,8 @@ export function createMcpServer(customRootDir?: string) {
   return server
 }
 
-export async function runMcpServer(customRootDir?: string) {
-  const server = createMcpServer(customRootDir)
+export async function runMcpServer(customRootDir?: string, enforceWorkspace: boolean = Boolean(customRootDir)) {
+  const server = createMcpServer(customRootDir, enforceWorkspace)
   const transport = new StdioServerTransport()
   await server.connect(transport)
 }

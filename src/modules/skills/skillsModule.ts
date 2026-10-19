@@ -509,14 +509,43 @@ function writeFileIfChanged(filePath: string, content: string): void {
   fs.writeFileSync(filePath, content, "utf8")
 }
 
-function cleanDirectory(dirPath: string): void {
+function isGiggleManagedWorkflow(filePath: string): boolean {
+  if (!filePath.endsWith(".md")) return false
+  try {
+    const content = fs.readFileSync(filePath, "utf8")
+    if (content.includes("<!-- giggle:managed -->") || content.includes("giggle_managed: true")) {
+      return true
+    }
+    if (content.includes("> Warning: Ignore this skill unless explicitly requested by the user.")) {
+      return true
+    }
+    const lines = content.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    const lastLine = lines[lines.length - 1] || ""
+    const cleanLast = lastLine.replace(/^"/, "").replace(/"$/, "")
+    if (
+      cleanLast.toLowerCase().endsWith("skill.md") ||
+      cleanLast.includes(".agents/skills") ||
+      cleanLast.includes(".agents\\skills")
+    ) {
+      return true
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
+function cleanWorkflowDirectory(dirPath: string): void {
   if (!fs.existsSync(dirPath)) return
   try {
     const entries = fs.readdirSync(dirPath)
     for (const entry of entries) {
       const entryPath = path.join(dirPath, entry)
       try {
-        fs.rmSync(entryPath, { recursive: true, force: true })
+        const stat = fs.statSync(entryPath)
+        if (stat.isFile() && isGiggleManagedWorkflow(entryPath)) {
+          fs.rmSync(entryPath, { force: true })
+        }
       } catch {
         // Ignore deletion error if locked
       }
@@ -543,7 +572,7 @@ export function syncSkills(
   const syncedFiles: string[] = []
 
   if (workflow) {
-    cleanDirectory(targetDir)
+    cleanWorkflowDirectory(targetDir)
     ensureDirExists(targetDir, verifiedDirs)
 
     for (const skill of skills) {
@@ -561,6 +590,7 @@ export function syncSkills(
 
       const pointerContent = [
         ...frontmatterLines,
+        "<!-- giggle:managed -->",
         "",
         warningBlock + sourcePathStr,
         "",

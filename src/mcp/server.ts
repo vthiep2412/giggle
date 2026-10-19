@@ -155,7 +155,7 @@ export function createMcpServer(customRootDir?: string, enforceWorkspace: boolea
     const moduleTool = registry.getAllMcpTools().find((t) => t.name === name)
     if (moduleTool) {
       const toolArgs: Record<string, any> = { ...args }
-      if (enforceWorkspace && !toolArgs.workspaceRoot) {
+      if (enforceWorkspace) {
         toolArgs.workspaceRoot = rootDir
       }
       const toolRes = await moduleTool.execute(toolArgs)

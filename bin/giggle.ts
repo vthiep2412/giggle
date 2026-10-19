@@ -238,6 +238,15 @@ async function main() {
 
     case "mcp":
     case "serve": {
+      const wsFlagIndex = args.findIndex((a) => a === "--workspace" || a === "-w")
+      if (wsFlagIndex !== -1) {
+        const val = args[wsFlagIndex + 1]
+        if (!val || val.startsWith("-")) {
+          console.error("Error: Missing or invalid value for workspace flag")
+          process.exit(1)
+        }
+      }
+
       const explicitWorkspace =
         getArgValue(args, "--workspace") ||
         getArgValue(args, "-w") ||

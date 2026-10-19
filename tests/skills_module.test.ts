@@ -235,17 +235,30 @@ no_auto_read: false
     const skillContent = `---\nname: coderabbit\ndescription: Anti Slop: Rules for AI Coding Agents.\n---\n\n# CodeRabbit Guide\nPerform strict review triage.`
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillContent, "utf8")
 
-    // Pre-create existing files to test overwrite and directory cleanup
+    // Pre-create existing files to test overwrite, giggle cleanup, and user workflow preservation
     const targetFile = path.join(targetDir, "coderabbit.md")
     fs.writeFileSync(targetFile, "old outdated content", "utf8")
-    const orphanedFile = path.join(targetDir, "orphaned-skill.md")
-    fs.writeFileSync(orphanedFile, "orphaned content", "utf8")
+
+    const orphanedGiggleFile = path.join(targetDir, "orphaned-giggle.md")
+    fs.writeFileSync(
+      orphanedGiggleFile,
+      "---\nname: orphaned\n---\n<!-- giggle:managed -->\nC:/old/SKILL.md\n",
+      "utf8"
+    )
+
+    const userWorkflowFile = path.join(targetDir, "my-custom-flow.md")
+    fs.writeFileSync(
+      userWorkflowFile,
+      "# User Workflow\nCustom instructions that should never be deleted.\n",
+      "utf8"
+    )
 
     const res = syncSkills(tempDir, targetDir, true)
     expect(res.syncedCount).toBe(1)
     expect(res.syncedFiles.length).toBe(1)
     expect(res.syncedFiles[0]).toBe(targetFile)
-    expect(fs.existsSync(orphanedFile)).toBe(false)
+    expect(fs.existsSync(orphanedGiggleFile)).toBe(false)
+    expect(fs.existsSync(userWorkflowFile)).toBe(true)
 
     const updatedContent = fs.readFileSync(targetFile, "utf8")
     expect(updatedContent.includes("name: coderabbit")).toBe(true)

@@ -224,7 +224,7 @@ no_auto_read: false
     expect(result.includes("Raw documentation body")).toBe(false)
   })
 
-  it("syncs skills as full workflow markdown files when workflow mode is enabled and overwrites existing files", async () => {
+  it("syncs skills as full workflow markdown files without description and clears target folder before sync", async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-wf-src-"))
     const targetDir = fs.mkdtempSync(path.join(os.tmpdir(), "giggle-wf-target-"))
 
@@ -235,19 +235,22 @@ no_auto_read: false
     const skillContent = `---\nname: coderabbit\ndescription: Anti Slop: Rules for AI Coding Agents.\n---\n\n# CodeRabbit Guide\nPerform strict review triage.`
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillContent, "utf8")
 
-    // Pre-create existing file to test overwrite
+    // Pre-create existing files to test overwrite and directory cleanup
     const targetFile = path.join(targetDir, "coderabbit.md")
     fs.writeFileSync(targetFile, "old outdated content", "utf8")
+    const orphanedFile = path.join(targetDir, "orphaned-skill.md")
+    fs.writeFileSync(orphanedFile, "orphaned content", "utf8")
 
     const res = syncSkills(tempDir, targetDir, true)
     expect(res.syncedCount).toBe(1)
     expect(res.syncedFiles.length).toBe(1)
     expect(res.syncedFiles[0]).toBe(targetFile)
+    expect(fs.existsSync(orphanedFile)).toBe(false)
 
     const updatedContent = fs.readFileSync(targetFile, "utf8")
     expect(updatedContent.includes("name: coderabbit")).toBe(true)
-    // Verify colon-containing short description is safely double-quoted with descr:
-    expect(updatedContent.includes('descr: "Anti Slop: Rules for AI Coding Agents."')).toBe(true)
+    expect(updatedContent.includes("descr:")).toBe(false)
+    expect(updatedContent.includes("description:")).toBe(false)
     expect(updatedContent.includes("file:///")).toBe(false)
     expect(updatedContent.includes(formatPointerPath(path.join(skillDir, "SKILL.md")))).toBe(true)
     expect(updatedContent.includes("Perform strict review triage.")).toBe(false)
@@ -348,17 +351,17 @@ no_auto_read: false
     expect(fs.existsSync(path.join(wfTargetDir, "gstack-upgrade.md"))).toBe(true)
     expect(fs.existsSync(path.join(wfTargetDir, "coderabbit.md"))).toBe(true)
 
-    // Parent suite skill has short description: includes descr:
+    // All workflow files must not have description or descr: in frontmatter
     const cavemanWf = fs.readFileSync(path.join(wfTargetDir, "caveman.md"), "utf8")
-    expect(cavemanWf.includes("descr: Caveman mode.")).toBe(true)
+    expect(cavemanWf.includes("descr:")).toBe(false)
+    expect(cavemanWf.includes("description:")).toBe(false)
     expect(cavemanWf.includes("file:///")).toBe(false)
 
-    // Standalone skill has short description: includes descr:
     const coderabbitWf = fs.readFileSync(path.join(wfTargetDir, "coderabbit.md"), "utf8")
-    expect(coderabbitWf.includes("descr: CodeRabbit reviewer.")).toBe(true)
+    expect(coderabbitWf.includes("descr:")).toBe(false)
+    expect(coderabbitWf.includes("description:")).toBe(false)
     expect(coderabbitWf.includes("file:///")).toBe(false)
 
-    // Subskills must not have description or descr: in workflow frontmatter
     const autoplanWf = fs.readFileSync(path.join(wfTargetDir, "gstack-autoplan.md"), "utf8")
     expect(autoplanWf.includes("descr:")).toBe(false)
     expect(autoplanWf.includes("description:")).toBe(false)

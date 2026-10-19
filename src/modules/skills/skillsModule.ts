@@ -509,12 +509,21 @@ function writeFileIfChanged(filePath: string, content: string): void {
   fs.writeFileSync(filePath, content, "utf8")
 }
 
-function sanitizeYamlDescriptionForWorkflow(desc: string): string {
-  if (!desc) return '""'
-  if (desc.includes(":") || desc.includes("#") || desc.includes('"') || desc.includes("'") || desc.includes("\n")) {
-    return JSON.stringify(desc)
+function cleanDirectory(dirPath: string): void {
+  if (!fs.existsSync(dirPath)) return
+  try {
+    const entries = fs.readdirSync(dirPath)
+    for (const entry of entries) {
+      const entryPath = path.join(dirPath, entry)
+      try {
+        fs.rmSync(entryPath, { recursive: true, force: true })
+      } catch {
+        // Ignore deletion error if locked
+      }
+    }
+  } catch {
+    // Ignore read error
   }
-  return desc
 }
 
 export function syncSkills(
@@ -530,11 +539,13 @@ export function syncSkills(
   const targetDir = targetGlobalDir || defaultDir
 
   const verifiedDirs = new Set<string>()
-  ensureDirExists(targetDir, verifiedDirs)
 
   const syncedFiles: string[] = []
 
   if (workflow) {
+    cleanDirectory(targetDir)
+    ensureDirExists(targetDir, verifiedDirs)
+
     for (const skill of skills) {
       const destFile = path.join(targetDir, `${skill.name}.md`)
       const sourcePathStr = formatPointerPath(skill.filePath)
@@ -542,24 +553,11 @@ export function syncSkills(
         ? ""
         : "> Warning: Ignore this skill unless explicitly requested by the user.\n\n"
 
-      const hasShortDesc = Boolean(
-        skill.description &&
-        skill.description.trim().length > 0 &&
-        skill.description.trim().length <= 60
-      )
-      const shouldIncludeDescr = !skill.isSubskill && hasShortDesc
-
       const frontmatterLines = [
         "---",
         `name: ${skill.name}`,
+        "---",
       ]
-
-      if (shouldIncludeDescr) {
-        const safeDesc = sanitizeYamlDescriptionForWorkflow(skill.description.trim())
-        frontmatterLines.push(`descr: ${safeDesc}`)
-      }
-
-      frontmatterLines.push("---")
 
       const pointerContent = [
         ...frontmatterLines,

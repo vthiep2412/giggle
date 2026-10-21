@@ -7,7 +7,7 @@ import { diffWorkingTree } from "../src/core/workingtree"
 import { commitWorkspace } from "../src/core/staging"
 import { executeSync } from "../src/modules/sync/syncEngine"
 import { setRemoteUrl, getRemoteUrl } from "../src/core/remote"
-import { checkMirroredRules, addMirroredRule, editMirroredRule, findWorkspaceRoot } from "../src/modules/rules/rulesModule"
+import { checkMirroredRules, addMirroredRule, editMirroredRule, deleteMirroredRule, findWorkspaceRoot } from "../src/modules/rules/rulesModule"
 import { listSkills, searchSkills, syncSkills } from "../src/modules/skills/skillsModule"
 import { runMcpServer } from "../src/mcp/server"
 import { resolveHead } from "../src/core/counter"
@@ -182,8 +182,20 @@ async function main() {
         console.log(`  Previous: ${res.oldSummary}`)
         console.log(`  Updated:  ${res.newSummary}`)
         console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
+      } else if (sub === "delete" || sub === "rm") {
+        const ruleNum = parseInt(args[2] || "", 10)
+        if (isNaN(ruleNum) || ruleNum < 1) {
+          console.error("Usage: giggle rules delete <rule_number>")
+          process.exit(1)
+        }
+        const res = deleteMirroredRule(ruleNum, rootDir)
+        console.log(`Deleted Rule ${res.ruleNumber}: ${res.deletedSummary}`)
+        console.log(
+          `Renumbered ${res.shiftedCount} subsequent rules (${res.ruleNumber + 1}..${res.ruleNumber + res.shiftedCount} -> ${res.ruleNumber}..${res.ruleNumber + res.shiftedCount - 1})`
+        )
+        console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
       } else {
-        console.error(`Unknown rules subcommand: ${sub}. Available: check, add, edit`)
+        console.error(`Unknown rules subcommand: ${sub}. Available: check, add, edit, delete`)
         process.exit(1)
       }
       break
@@ -313,6 +325,7 @@ Commands:
   rules check                         Audit and report all 6 mirrored rules with 3-word previews
   rules add <rule text>               Add a new numbered rule across all 6 mirrored files
   rules edit <number> <new rule text> Edit an existing numbered rule across all 6 mirrored files
+  rules delete <number>               Delete a rule across all 6 files and renumber subsequent rules
   skill list [/force]                 List workspace skills with names, descriptions, and paths
   skill search <query> [/force]       Fuzzy search skills across workspace by keywords
   skill sync [-w] [target]            Sync skills as global pointers or full workflows (-w)

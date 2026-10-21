@@ -297,6 +297,78 @@ export function editMirroredRule(
   }
 }
 
+export function deleteMirroredRule(
+  ruleNumber: number,
+  workspaceRoot: string = process.cwd(),
+  includeGlobalGemini: boolean = true
+): { ruleNumber: number; deletedSummary: string; shiftedCount: number; updatedFiles: string[] } {
+  const targetFiles = getMirroredRulePaths(workspaceRoot, includeGlobalGemini)
+
+  let deletedSummary = ""
+
+  // Verify all files have this rule first
+  for (const file of targetFiles) {
+    if (!fs.existsSync(file)) {
+      throw new Error(`Target rule file missing: ${file}`)
+    }
+
+    const content = fs.readFileSync(file, "utf8")
+    const parsed = parseRulesFromText(content)
+    const targetRule = parsed.rules.find((r) => r.number === ruleNumber)
+
+    if (!targetRule) {
+      throw new Error(`Rule ${ruleNumber} not found in ${file}`)
+    }
+
+    if (!deletedSummary) {
+      deletedSummary = formatRuleSummary(targetRule.content)
+    }
+  }
+
+  const updatedFiles: string[] = []
+  let shiftedCount = 0
+
+  // Delete rule and renumber subsequent rules across all files
+  for (const file of targetFiles) {
+    const content = fs.readFileSync(file, "utf8")
+    const parsed = parseRulesFromText(content)
+    const targetIndex = parsed.rules.findIndex((r) => r.number === ruleNumber)
+    const targetRule = parsed.rules[targetIndex]
+    if (!targetRule) continue
+
+    const subsequentRules = parsed.rules.slice(targetIndex + 1)
+    if (shiftedCount === 0) {
+      shiftedCount = subsequentRules.length
+    }
+
+    const before = content.slice(0, targetRule.startIndex)
+    const renumberedSubsequent = subsequentRules
+      .map((r) => {
+        const body = r.raw.replace(/^\d+\.\s*/, "")
+        return `${r.number - 1}. ${body}`
+      })
+      .join("")
+
+    const lastRule = parsed.rules[parsed.rules.length - 1]
+    const after = lastRule ? content.slice(lastRule.endIndex) : ""
+
+    const newContent =
+      subsequentRules.length === 0
+        ? `${before.replace(/\n+$/, "\n\n")}${after.replace(/^\n+/, "")}`
+        : `${before}${renumberedSubsequent}${after}`
+
+    fs.writeFileSync(file, newContent, "utf8")
+    updatedFiles.push(file)
+  }
+
+  return {
+    ruleNumber,
+    deletedSummary,
+    shiftedCount,
+    updatedFiles,
+  }
+}
+
 export class RulesModule implements GiggleModule {
   name = "rules"
   description = "Antigravity mirrored workspace rules manager (check, add, edit across all 6 files)"
@@ -371,6 +443,27 @@ export class RulesModule implements GiggleModule {
           console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
         },
       },
+      {
+        name: "rules:delete",
+        description: "Delete a numbered rule across all 6 mirrored rule files and renumber subsequent rules",
+        action: async (args: string[]) => {
+          const ruleNumStr = args[0]
+          const ruleNum = parseInt(ruleNumStr || "", 10)
+
+          if (isNaN(ruleNum) || ruleNum < 1) {
+            console.error("Usage: giggle rules delete <rule_number>")
+            process.exit(1)
+          }
+
+          const rootDir = this.context?.rootDir || process.cwd()
+          const res = deleteMirroredRule(ruleNum, rootDir)
+          console.log(`Deleted Rule ${res.ruleNumber}: ${res.deletedSummary}`)
+          console.log(
+            `Renumbered ${res.shiftedCount} subsequent rules (${res.ruleNumber + 1}..${res.ruleNumber + res.shiftedCount} -> ${res.ruleNumber}..${res.ruleNumber + res.shiftedCount - 1})`
+          )
+          console.log(`Updated ${res.updatedFiles.length} mirrored rule files.`)
+        },
+      },
     ]
   }
 
@@ -394,7 +487,8 @@ export class RulesModule implements GiggleModule {
         },
         execute: async (args: Record<string, any>) => {
           const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          const check = checkMirroredRules(targetRoot)
+          const includeGlobal = args.includeGlobal !== false
+          const check = checkMirroredRules(targetRoot, includeGlobal)
 
           if (args.ruleNumber !== undefined) {
             const num = Number(args.ruleNumber)
@@ -470,7 +564,8 @@ export class RulesModule implements GiggleModule {
         },
         execute: async (args: Record<string, any>) => {
           const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          const res = addMirroredRule(args.ruleText, targetRoot)
+          const includeGlobal = args.includeGlobal !== false
+          const res = addMirroredRule(args.ruleText, targetRoot, includeGlobal)
           return [
             `Added Rule ${res.newRuleNumber}: ${res.summary}`,
             `Updated ${res.updatedFiles.length} mirrored rule files.`,
@@ -500,11 +595,69 @@ export class RulesModule implements GiggleModule {
         },
         execute: async (args: Record<string, any>) => {
           const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
-          const res = editMirroredRule(args.ruleNumber, args.newRuleText, targetRoot)
+          const includeGlobal = args.includeGlobal !== false
+          const res = editMirroredRule(args.ruleNumber, args.newRuleText, targetRoot, includeGlobal)
           return [
             `Updated Rule ${res.ruleNumber}:`,
             `  Previous: ${res.oldSummary}`,
             `  Updated:  ${res.newSummary}`,
+            `Updated ${res.updatedFiles.length} mirrored rule files.`,
+          ].join("\n")
+        },
+      },
+      {
+        name: "giggle_rules_delete",
+        description: "Delete a numbered rule across all 6 mirrored rule files and automatically renumber subsequent rules",
+        parameters: {
+          type: "object",
+          properties: {
+            ruleNumber: {
+              type: "number",
+              description: "The rule number to delete",
+            },
+            confirm: {
+              type: "boolean",
+              description: "Mandatory guardrail confirmation. Set to true to apply deletion, false for preview.",
+            },
+            workspaceRoot: {
+              type: "string",
+              description: "Optional workspace root, defaults to current repository root",
+            },
+          },
+          required: ["ruleNumber"],
+        },
+        execute: async (args: Record<string, any>) => {
+          const targetRoot = args.workspaceRoot || this.context?.rootDir || process.cwd()
+          const includeGlobal = args.includeGlobal !== false
+          const ruleNum = Number(args.ruleNumber)
+          if (isNaN(ruleNum) || ruleNum < 1) {
+            return "Invalid rule number specified"
+          }
+
+          const check = checkMirroredRules(targetRoot, includeGlobal)
+          const target = check.files[0]?.rules.find((r) => r.number === ruleNum)
+          if (!target) {
+            return `Rule ${ruleNum} not found. Total rules: ${check.totalRules}`
+          }
+
+          const subsequentCount = Math.max(0, check.totalRules - ruleNum)
+
+          if (!args.confirm) {
+            return [
+              `[PREVIEW - Dry Run] Rule ${ruleNum} would be deleted:`,
+              `  Content: ${target.summary}`,
+              `  Subsequent rules to renumber: ${subsequentCount} (rules ${ruleNum + 1}..${check.totalRules} -> ${ruleNum}..${check.totalRules - 1})`,
+              `  Target files (${check.files.length}):`,
+              ...check.files.map((f) => `    ${f.file}`),
+              "",
+              "To permanently apply this deletion and renumbering, call giggle_rules_delete with confirm: true.",
+            ].join("\n")
+          }
+
+          const res = deleteMirroredRule(ruleNum, targetRoot, includeGlobal)
+          return [
+            `Deleted Rule ${res.ruleNumber}: ${res.deletedSummary}`,
+            `Renumbered ${res.shiftedCount} subsequent rules (${res.ruleNumber + 1}..${res.ruleNumber + res.shiftedCount} -> ${res.ruleNumber}..${res.ruleNumber + res.shiftedCount - 1}).`,
             `Updated ${res.updatedFiles.length} mirrored rule files.`,
           ].join("\n")
         },

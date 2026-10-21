@@ -68,6 +68,9 @@ giggle rules add "Rule text to append"
 
 # Edit an existing numbered rule across all mirrored rule files
 giggle rules edit <number> "Updated rule text"
+
+# Delete a numbered rule across all mirrored rule files and renumber subsequent rules
+giggle rules delete <number>
 ```
 
 ### 3. Antigravity Skills
@@ -121,6 +124,7 @@ Add Giggle to your IDE or agent MCP settings with an enforced workspace:
 - `giggle_rules_check`: Audits mirrored rule files and validates synchronization.
 - `giggle_rules_add`: Appends a new numbered rule across all mirrored rule files.
 - `giggle_rules_edit`: Modifies an existing numbered rule across all mirrored rule files.
+- `giggle_rules_delete`: Deletes a numbered rule with mandatory confirmation guardrail and renumbers subsequent rules.
 - `giggle_skill_list`: Lists workspace skills with names, descriptions, and file paths.
 - `giggle_skill_search`: Performs keyword and fuzzy search across skills.
 - `giggle_skill_sync`: Synchronizes skills as pointers or full workflow markdown files.
